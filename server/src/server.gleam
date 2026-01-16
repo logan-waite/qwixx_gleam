@@ -1,7 +1,14 @@
 import dot_env
 import dot_env/env
 import gleam/erlang/process
+import gleam/http.{Get}
+import gleam/int
+import gleam/json
+import lustre/attribute
+import lustre/element
+import lustre/element/html
 import mist
+import shared/dice.{type DiceState, DiceState, Die}
 import wisp.{type Request, type Response}
 import wisp/wisp_mist
 
@@ -50,7 +57,48 @@ fn handle_request(_: Nil, static_directory: String, req: Request) -> Response {
   use req <- app_middleware(req, static_directory)
 
   case req.method, wisp.path_segments(req) {
+    Get, ["api", "roll-dice"] -> handle_roll_dice()
+    Get, _ -> serve_index()
     _, _ -> wisp.not_found()
   }
+}
+
+fn serve_index() {
+  let html =
+    html.html([], [
+      html.head([], [
+        html.title([], "Qwixx"),
+        html.script(
+          [attribute.type_("module"), attribute.src("/static/client.js")],
+          "",
+        ),
+      ]),
+      html.body([], [html.div([attribute.id("app")], [])]),
+    ])
+
+  html
+  |> element.to_document_string
+  |> wisp.html_response(200)
+}
+
+fn handle_roll_dice() -> Response {
+  let dice_state =
+    roll_dice()
+    |> dice.dice_state_to_json()
+    |> json.to_string_tree()
+
+  wisp.response(200)
+  |> wisp.string_tree_body(dice_state)
+  |> wisp.set_header("content-type", "application/json")
+}
+
+fn roll_dice() -> DiceState {
+  let red = Die(locked: False, value: int.random(6) + 1)
+  let yellow = Die(locked: False, value: int.random(6) + 1)
+  let blue = Die(locked: False, value: int.random(6) + 1)
+  let green = Die(locked: False, value: int.random(6) + 1)
+  let white_1 = Die(locked: False, value: int.random(6) + 1)
+  let white_2 = Die(locked: False, value: int.random(6) + 1)
+  DiceState(red:, yellow:, blue:, green:, white_1:, white_2:)
 }
 // DATABASE SETUP ---------------------------------------------

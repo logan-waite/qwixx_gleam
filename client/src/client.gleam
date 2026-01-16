@@ -1,10 +1,11 @@
+import rsvp
 import gleam/int
 import lustre
 import lustre/effect.{type Effect}
 import lustre/element.{type Element}
 import lustre/element/html
 import lustre/event
-import shared/dice.{type DiceState, type Die, DiceState, Die}
+import shared/dice.{type DiceState, DiceState, Die}
 
 pub fn main() -> Nil {
   let app = lustre.application(init, update, view)
@@ -16,7 +17,7 @@ pub fn main() -> Nil {
 // Model -----------------------------------------
 
 type Model {
-  Model(dice_state: DiceState)
+  Model(dice_state: DiceState, errors: String)
 }
 
 fn init(_) -> #(Model, Effect(Msg)) {
@@ -28,29 +29,31 @@ fn init(_) -> #(Model, Effect(Msg)) {
   let white_2 = Die(locked: False, value: 1)
   let dice_state = DiceState(red:, yellow:, blue:, green:, white_1:, white_2:)
 
-  #(Model(dice_state:), effect.none())
+  #(Model(dice_state:, errors: ""), effect.none())
 }
 
 // Update ----------------------------------------
 
 type Msg {
   UserRolledDice
+ApiUpdatedDiceState(Result(DiceState, rsvp.Error))
 }
 
 fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
   case msg {
-    UserRolledDice -> #(Model(generate_random_dice_state()), effect.none())
+    UserRolledDice -> #(model, get_new_dice_state())
+    ApiUpdatedDiceState(result) -> case result {
+      Ok(dice_state) -> #(Model(..model, dice_state:), effect.none())
+      Error(_) -> #(Model(..model, errors: "An error occured"), effect.none())
+    }
   }
 }
 
-fn generate_random_dice_state() -> DiceState {
-  let red = Die(locked: False, value: int.random(6) + 1)
-  let yellow = Die(locked: False, value: int.random(6) + 1)
-  let blue = Die(locked: False, value: int.random(6) + 1)
-  let green = Die(locked: False, value: int.random(6) + 1)
-  let white_1 = Die(locked: False, value: int.random(6) + 1)
-  let white_2 = Die(locked: False, value: int.random(6) + 1)
-  DiceState(red:, yellow:, blue:, green:, white_1:, white_2:)
+fn get_new_dice_state() -> Effect(Msg) {
+  let url = "/api/roll-dice"
+  let handler = rsvp.expect_json(dice.dice_state_decoder(), ApiUpdatedDiceState)
+
+  rsvp.get(url, handler)
 }
 
 // View ------------------------------------------

@@ -1,13 +1,19 @@
 import dot_env
 import dot_env/env
+import gleam/bytes_tree
 import gleam/erlang/process
 import gleam/http.{Get}
+import gleam/http/request.{type Request as BaseRequest}
+import gleam/http/response.{type Response as BaseResponse}
 import gleam/int
+import gleam/io
 import gleam/json
+import gleam/list
+import gleam/option.{None}
 import lustre/attribute
 import lustre/element
 import lustre/element/html
-import mist
+import mist.{type Connection, type ResponseData}
 import shared/dice.{type DiceState, DiceState, Die}
 import wisp.{type Request, type Response}
 import wisp/wisp_mist
@@ -28,9 +34,32 @@ pub fn main() -> Nil {
   let assert Ok(priv_directory) = wisp.priv_directory("server")
   let static_directory = priv_directory <> "/static"
 
+  let not_found =
+    response.new(404)
+    |> response.set_body(mist.Bytes(bytes_tree.new()))
+
   let assert Ok(_) =
-    handle_request(db, static_directory, _)
-    |> wisp_mist.handler(secret_key_base)
+    fn(req: BaseRequest(Connection)) -> BaseResponse(ResponseData) {
+      io.println(
+        "path: "
+        <> list.fold(request.path_segments(req), "", fn(result, curr) {
+          result <> "/" <> curr
+        }),
+      )
+      case request.path_segments(req) {
+        ["ws", _] ->
+          mist.websocket(
+            request: req,
+            on_init: fn(_conn) { #(Nil, None) },
+            on_close: fn(_conn) { io.println("closing ws connection") },
+            handler: handle_ws_request,
+          )
+        _ ->
+          handle_request(db, static_directory, _)
+          |> wisp_mist.handler(secret_key_base)
+          |> fn(fun) { fun(req) }
+      }
+    }
     |> mist.new
     |> mist.port(3000)
     |> mist.start
@@ -53,6 +82,7 @@ fn app_middleware(
   next(req)
 }
 
+// Api
 fn handle_request(_: Nil, static_directory: String, req: Request) -> Response {
   use req <- app_middleware(req, static_directory)
 
@@ -76,20 +106,21 @@ fn serve_index() {
       html.body([], [html.div([attribute.id("app")], [])]),
     ])
 
-  html
-  |> element.to_document_string
-  |> wisp.html_response(200)
+  let body =
+    html
+    |> element.to_document_string
+    |> bytes_tree.from_string
+
+  wisp.html_response(html |> element.to_document_string, 200)
 }
 
 fn handle_roll_dice() -> Response {
   let dice_state =
     roll_dice()
     |> dice.dice_state_to_json()
-    |> json.to_string_tree()
+    |> json.to_string()
 
-  wisp.response(200)
-  |> wisp.string_tree_body(dice_state)
-  |> wisp.set_header("content-type", "application/json")
+  wisp.json_response(dice_state, 200)
 }
 
 fn roll_dice() -> DiceState {
@@ -100,5 +131,11 @@ fn roll_dice() -> DiceState {
   let white_1 = Die(locked: False, value: int.random(6) + 1)
   let white_2 = Die(locked: False, value: int.random(6) + 1)
   DiceState(red:, yellow:, blue:, green:, white_1:, white_2:)
+}
+
+// websockets
+fn handle_ws_request(state, message, conn) {
+  let assert Ok(_) = mist.send_text_frame(conn, "got message")
+  mist.continue(state)
 }
 // DATABASE SETUP ---------------------------------------------

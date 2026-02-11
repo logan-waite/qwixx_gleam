@@ -15,6 +15,7 @@ import lustre/element
 import lustre/element/html
 import mist.{type Connection, type ResponseData}
 import shared/dice.{type DiceState, DiceState, Die}
+import shared/events
 import wisp.{type Request, type Response}
 import wisp/wisp_mist
 
@@ -47,7 +48,7 @@ pub fn main() -> Nil {
         }),
       )
       case request.path_segments(req) {
-        ["ws", _] ->
+        ["ws"] ->
           mist.websocket(
             request: req,
             on_init: fn(_conn) { #(Nil, None) },
@@ -134,8 +135,32 @@ fn roll_dice() -> DiceState {
 }
 
 // websockets
-fn handle_ws_request(state, message, conn) {
-  let assert Ok(_) = mist.send_text_frame(conn, "got message")
-  mist.continue(state)
+fn handle_ws_request(state, message: mist.WebsocketMessage(a), conn) {
+  case message {
+    mist.Text("roll-dice") -> {
+      let event =
+        roll_dice()
+        |> events.UpdatedDiceState
+        |> events.event_to_json
+        |> json.to_string()
+
+      let assert Ok(_) = mist.send_text_frame(conn, event)
+      mist.continue(state)
+    }
+    mist.Text(msg) -> {
+      io.println("Received msg frame: " <> msg)
+      mist.continue(state)
+    }
+    mist.Custom(msg) -> {
+      // io.println("Received custom msg: " <> msg)
+      io.println("Received custom msg: ")
+      mist.continue(state)
+    }
+    mist.Binary(_bit_array) -> {
+      io.println("Whatchu doin'")
+      mist.continue(state)
+    }
+    mist.Closed | mist.Shutdown -> mist.stop()
+  }
 }
 // DATABASE SETUP ---------------------------------------------

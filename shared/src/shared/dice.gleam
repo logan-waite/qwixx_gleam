@@ -25,6 +25,16 @@ pub type DiceState {
   )
 }
 
+pub fn new_dice_state() -> DiceState {
+  let red = Die(locked: False, value: 1)
+  let yellow = Die(locked: False, value: 1)
+  let blue = Die(locked: False, value: 1)
+  let green = Die(locked: False, value: 1)
+  let white_1 = Die(locked: False, value: 1)
+  let white_2 = Die(locked: False, value: 1)
+  DiceState(red:, yellow:, blue:, green:, white_1:, white_2:)
+}
+
 // Dice Encoder/Decoders
 pub fn die_decoder() -> decode.Decoder(Die) {
   use locked <- decode.field("locked", decode.bool)

@@ -40,12 +40,13 @@ packages = [
   { name = "plinth", version = "0.9.3", build_tools = ["gleam"], requirements = ["gleam_javascript", "gleam_json", "gleam_stdlib"], otp_app = "plinth", source = "hex", outer_checksum = "434D97403168095D2B11A15D9FFF2FC8D1189B2E52C182B13064CF8E23CA04D4" },
   { name = "polly", version = "3.0.0", build_tools = ["gleam"], requirements = ["filepath", "gleam_erlang", "gleam_otp", "gleam_stdlib", "simplifile"], otp_app = "polly", source = "hex", outer_checksum = "35B11497B998618CEE216415A7853C3FED3F0F2148DC86BD8FC86B95D67F6DD8" },
   { name = "rsvp", version = "1.2.0", build_tools = ["gleam"], requirements = ["gleam_erlang", "gleam_fetch", "gleam_http", "gleam_httpc", "gleam_javascript", "gleam_json", "gleam_stdlib", "lustre"], otp_app = "rsvp", source = "hex", outer_checksum = "40F9E0E662FF258E10C7041A9591261FE802D56625FB444B91510969644F7722" },
-  { name = "shared", version = "1.0.0", build_tools = ["gleam"], requirements = ["gleam_json", "gleam_stdlib"], source = "local", path = "../shared" },
+  { name = "shared", version = "1.0.0", build_tools = ["gleam"], requirements = ["gleam_json", "gleam_stdlib", "youid"], source = "local", path = "../shared" },
   { name = "simplifile", version = "2.3.2", build_tools = ["gleam"], requirements = ["filepath", "gleam_stdlib"], otp_app = "simplifile", source = "hex", outer_checksum = "E049B4DACD4D206D87843BCF4C775A50AE0F50A52031A2FFB40C9ED07D6EC70A" },
   { name = "snag", version = "1.2.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "snag", source = "hex", outer_checksum = "274F41D6C3ECF99F7686FDCE54183333E41D2C1CA5A3A673F9A8B2C7A4401077" },
   { name = "telemetry", version = "1.3.0", build_tools = ["rebar3"], requirements = [], otp_app = "telemetry", source = "hex", outer_checksum = "7015FC8919DBE63764F4B4B87A95B7C0996BD539E0D499BE6EC9D7F3875B79E6" },
   { name = "tom", version = "2.0.1", build_tools = ["gleam"], requirements = ["gleam_stdlib", "gleam_time"], otp_app = "tom", source = "hex", outer_checksum = "90791DA4AACE637E30081FE77049B8DB850FBC8CACC31515376BCC4E59BE1DD2" },
   { name = "wisp", version = "2.2.0", build_tools = ["gleam"], requirements = ["directories", "exception", "filepath", "gleam_crypto", "gleam_erlang", "gleam_http", "gleam_json", "gleam_stdlib", "houdini", "logging", "marceau", "mist", "simplifile"], otp_app = "wisp", source = "hex", outer_checksum = "655163D4DE19E3DD4AC75813A991BFD5523CB4FF2FC5F9F58FD6FB39D5D1806D" },
+  { name = "youid", version = "1.5.1", build_tools = ["gleam"], requirements = ["gleam_crypto", "gleam_stdlib", "gleam_time"], otp_app = "youid", source = "hex", outer_checksum = "580E909FD704DB16416D5CB080618EDC2DA0F1BE4D21B490C0683335E3FFC5AF" },
 ]
 
 [requirements]
@@ -59,3 +60,4 @@ lustre_websocket = { version = ">= 0.9.0 and < 1.0.0" }
 plinth = { version = ">= 0.9.2 and < 1.0.0" }
 rsvp = { version = ">= 1.2.0 and < 2.0.0" }
 shared = { path = "../shared" }
+youid = { version = ">= 1.5.1 and < 2.0.0" }

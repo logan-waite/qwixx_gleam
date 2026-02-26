@@ -11,8 +11,10 @@ import lustre/element.{type Element}
 import lustre/element/html
 import lustre/event
 import lustre_websocket as ws
+import youid/uuid
+
 import shared/dice.{type DiceState, DiceState, Die}
-import shared/events.{type WsEvent}
+import shared/events.{type AppEvent}
 import shared/player.{type Player, type ScoreCard, Player, ScoreCard}
 
 pub fn main() -> Nil {
@@ -22,37 +24,28 @@ pub fn main() -> Nil {
   Nil
 }
 
+// -----------------------------------------------
 // Model -----------------------------------------
+// -----------------------------------------------
 
 type Model {
   Model(
     ws: Option(ws.WebSocket),
     dice_state: DiceState,
     errors: String,
-    name: String,
-    score_card:ScoreCard,
+    player: Player,
   )
 }
 
 fn init(_) -> #(Model, Effect(Msg)) {
-  // dice tray
-  let red = Die(locked: False, value: 1)
-  let yellow = Die(locked: False, value: 1)
-  let blue = Die(locked: False, value: 1)
-  let green = Die(locked: False, value: 1)
-  let white_1 = Die(locked: False, value: 1)
-  let white_2 = Die(locked: False, value: 1)
-  let dice_state = DiceState(red:, yellow:, blue:, green:, white_1:, white_2:)
-
-  // player
-  let name = "Logan"
-  let score_card =
-    ScoreCard(red: [5], yellow: [2], green: [11], blue: [6], missed: 0)
-
-  #(Model(ws: None, dice_state:, name:, score_card:, errors: ""), ws.init("ws", WsWrapper))
+  let dice_state = dice.new_dice_state()
+  let player = player.new_player()
+  #(Model(ws: None, dice_state:, player:, errors: ""), ws.init("ws", WsWrapper))
 }
 
+// -----------------------------------------------
 // Update ----------------------------------------
+// -----------------------------------------------
 
 type Msg {
   UserRolledDice
@@ -62,74 +55,45 @@ type Msg {
 
 fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
   case msg {
-    UserRolledDice -> #(model, get_new_dice_state(model.ws))
-    UserToggledScoreBox(value) -> {
-      // asserting here because we defined the values we're splitting
-      let assert [color, num_string] = string.split(value, "-")
-      let assert Ok(number) = int.parse(num_string)
-
-      let score_card = case color {
-        "red" ->
-          ScoreCard(
-            ..model.score_card,
-            red: list.prepend(model.score_card.red, number),
-          )
-        "yellow" ->
-          ScoreCard(
-            ..model.score_card,
-            yellow: list.prepend(model.score_card.yellow, number),
-          )
-        "green" ->
-          ScoreCard(
-            ..model.score_card,
-            green: list.prepend(model.score_card.green, number),
-          )
-        "blue" ->
-          ScoreCard(
-            ..model.score_card,
-            blue: list.prepend(model.score_card.blue, number),
-          )
-        _ -> {
-          io.println("Error updating scorecard, received wrong color:" <> color)
-          model.score_card
-        }
-      }
-      #(Model(..model, score_card:), effect.none())
-    }
+    UserRolledDice -> #(model, send_event(model.ws, events.RollDice))
+    UserToggledScoreBox(value) -> update_score_card(model, value)
     // Websocket Messages
-    WsWrapper(ws.InvalidUrl) -> panic
-    WsWrapper(ws.OnOpen(socket)) -> #(
-      Model(..model, ws: Some(socket)),
-      ws.send(socket, "client-init"),
-    )
-    WsWrapper(ws.OnTextMessage(msg)) -> {
-      case json.parse(msg, events.event_decoder()) {
-        Ok(event) -> handle_ws_event(model, event)
-        Error(err) -> {
-          io.println_error("error in decoding")
-          #(model, effect.none())
-        }
-      }
-    }
-    WsWrapper(ws.OnBinaryMessage(msg)) -> #(model, effect.none())
-    WsWrapper(ws.OnClose(reason)) -> #(model, effect.none())
+    WsWrapper(event) -> handle_ws_event(model, event)
   }
 }
 
-fn handle_ws_event(model: Model, event: WsEvent) -> #(Model, Effect(Msg)) {
+fn handle_ws_event(model: Model, ws_event: ws.WebSocketEvent) {
+  case ws_event {
+    ws.InvalidUrl -> panic
+    ws.OnOpen(socket) -> #(
+      Model(..model, ws: Some(socket)),
+      send_event(Some(socket), events.NoOp),
+    )
+    ws.OnTextMessage(msg) -> {
+      events.parse_event(msg)
+      |> handle_app_event(model)
+    }
+    ws.OnBinaryMessage(_msg) -> #(model, effect.none())
+    ws.OnClose(_reason) -> #(model, effect.none())
+  }
+}
+
+fn handle_app_event(event: AppEvent, model: Model) -> #(Model, Effect(Msg)) {
   case event {
     events.UpdatedDiceState(dice_state) -> #(
       Model(..model, dice_state:),
       effect.none(),
     )
-    // server events/empty event
-    events.RollDice | events.NoOp -> #(model, effect.none())
+    events.SocketConnected(player) -> {
+      #(Model(..model, player: player), effect.none())
+    }
+    _ -> #(model, effect.none())
   }
 }
 
-fn get_new_dice_state(socket: Option(ws.WebSocket)) -> Effect(Msg) {
+fn send_event(socket, event) {
   case socket {
-    Some(s) -> ws.send(s, "roll-dice")
+    Some(s) -> ws.send(s, events.event_to_text(event))
     None -> {
       io.println("Socket not initiated")
       effect.none()
@@ -137,13 +101,60 @@ fn get_new_dice_state(socket: Option(ws.WebSocket)) -> Effect(Msg) {
   }
 }
 
+// Dice
+
+// Score Card
+fn update_score_card(model: Model, value: String) {
+  // asserting here because we defined the values we're splitting
+  let assert [color, num_string] = string.split(value, "-")
+  let assert Ok(number) = int.parse(num_string)
+
+  let score_card = case color {
+    "red" ->
+      ScoreCard(
+        ..model.player.score_card,
+        red: list.prepend(model.player.score_card.red, number),
+      )
+    "yellow" ->
+      ScoreCard(
+        ..model.player.score_card,
+        yellow: list.prepend(model.player.score_card.yellow, number),
+      )
+    "green" ->
+      ScoreCard(
+        ..model.player.score_card,
+        green: list.prepend(model.player.score_card.green, number),
+      )
+    "blue" ->
+      ScoreCard(
+        ..model.player.score_card,
+        blue: list.prepend(model.player.score_card.blue, number),
+      )
+    _ -> {
+      io.println("Error updating scorecard, received wrong color:" <> color)
+      model.player.score_card
+    }
+  }
+  io.println(
+    "updated score_card: "
+    <> player.score_card_to_json(score_card) |> json.to_string(),
+  )
+  let player = Player(..model.player, score_card:)
+  #(
+    Model(..model, player:),
+    send_event(model.ws, events.PlayerUpdatedScoreCard(player)),
+  )
+}
+
+// -----------------------------------------------
 // View ------------------------------------------
+// -----------------------------------------------
 
 fn view(model: Model) -> Element(Msg) {
   html.div([], [
     html.button([event.on_click(UserRolledDice)], [html.text("Roll Dice")]),
     dice_tray(model.dice_state),
-    score_card(model.score_card),
+    score_card(model.player.score_card),
   ])
 }
 

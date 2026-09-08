@@ -1,83 +1,120 @@
 import gleam/dynamic/decode
 import gleam/json
+import gleam/option.{type Option, None, Some}
+import gleam/time/timestamp.{type Timestamp}
 import youid/uuid.{type Uuid}
 
+import shared/utils
+
 pub type Player {
-  Player(id: Uuid, name: String, score_card: ScoreCard)
+  Player(id: Uuid, name: Option(String))
 }
 
-pub type ScoreRow =
-  List(Int)
-
-pub type ScoreCard {
-  ScoreCard(
-    red: ScoreRow,
-    yellow: ScoreRow,
-    green: ScoreRow,
-    blue: ScoreRow,
+pub type PlayerGame {
+  PlayerGame(
+    player_id: Uuid,
+    game_id: Uuid,
+    joined: Timestamp,
+    ready: Bool,
+    // red bitmask
+    red: Int,
+    // yellow bitmask
+    yellow: Int,
+    // green bitmask
+    green: Int,
+    // blue bitmask
+    blue: Int,
     missed: Int,
   )
 }
 
-//{
-//  id: Uuid (string)
-//  name: String
-//  score_card: {
-//    red: [],
-//    yellow: [],
-//    green: [],
-//    blue: []
-//    missed: 0
-//  }
-//}
-pub fn new_score_card() -> ScoreCard {
-  ScoreCard(red: [], yellow: [], green: [], blue: [], missed: 0)
-}
-
 pub fn new_player() -> Player {
-  Player(id: uuid.v4(), name: "", score_card: new_score_card())
+  Player(id: uuid.v4(), name: None)
 }
 
-fn score_card_decoder() -> decode.Decoder(ScoreCard) {
-  use red <- decode.field("red", decode.list(decode.int))
-  use yellow <- decode.field("yellow", decode.list(decode.int))
-  use green <- decode.field("green", decode.list(decode.int))
-  use blue <- decode.field("blue", decode.list(decode.int))
-  use missed <- decode.field("missed", decode.int)
-
-  decode.success(ScoreCard(red:, yellow:, green:, blue:, missed:))
+pub fn new_player_game(player_id: Uuid, game_id: Uuid) -> PlayerGame {
+  PlayerGame(
+    player_id:,
+    game_id:,
+    joined: timestamp.system_time(),
+    ready: False,
+    red: 0,
+    yellow: 0,
+    green: 0,
+    blue: 0,
+    missed: 0,
+  )
 }
 
 pub fn player_decoder() -> decode.Decoder(Player) {
-  use name <- decode.field("name", decode.string)
-  use score_card <- decode.field("score_card", score_card_decoder())
+  use name <- decode.field("name", decode.optional(decode.string))
   use id_string <- decode.field("id", decode.string)
 
   case uuid.from_string(id_string) {
-    Ok(id) -> decode.success(Player(id:, name:, score_card:))
-    Error(_) ->
-      decode.failure(Player(id: uuid.nil, name:, score_card:), "Player")
+    Ok(id) -> decode.success(Player(id:, name:))
+    Error(_) -> decode.failure(Player(id: uuid.nil, name:), "Player")
   }
 }
 
-pub fn score_card_to_json(score_card: ScoreCard) -> json.Json {
-  let ScoreCard(red:, yellow:, green:, blue:, missed:) = score_card
-
-  json.object([
-    #("red", json.array(red, json.int)),
-    #("yellow", json.array(yellow, json.int)),
-    #("green", json.array(green, json.int)),
-    #("blue", json.array(blue, json.int)),
-    #("missed", json.int(missed)),
-  ])
-}
-
 pub fn player_to_json(player: Player) -> json.Json {
-  let Player(id:, name:, score_card:) = player
+  let Player(id:, name:) = player
+  let name = case name {
+    Some(name) -> name
+    None -> "null"
+  }
 
   json.object([
     #("id", json.string(uuid.to_string(id))),
     #("name", json.string(name)),
-    #("score_card", score_card_to_json(score_card)),
+  ])
+}
+
+pub fn player_game_decoder() -> decode.Decoder(PlayerGame) {
+  use player_id <- decode.field("player_id", utils.uuid_decoder())
+  use game_id <- decode.field("game_id", utils.uuid_decoder())
+  use joined <- decode.field("joined", utils.timestamp_decoder())
+  use ready <- decode.field("ready", decode.bool)
+  use red <- decode.field("red", decode.int)
+  use yellow <- decode.field("yellow", decode.int)
+  use green <- decode.field("green", decode.int)
+  use blue <- decode.field("blue", decode.int)
+  use missed <- decode.field("missed", decode.int)
+
+  decode.success(PlayerGame(
+    player_id:,
+    game_id:,
+    joined:,
+    ready:,
+    red:,
+    yellow:,
+    green:,
+    blue:,
+    missed:,
+  ))
+}
+
+pub fn player_game_to_json(player_game: PlayerGame) -> json.Json {
+  let PlayerGame(
+    player_id:,
+    game_id:,
+    joined:,
+    ready:,
+    red:,
+    yellow:,
+    green:,
+    blue:,
+    missed:,
+  ) = player_game
+
+  json.object([
+    #("player_id", json.string(uuid.to_string(player_id))),
+    #("game_id", json.string(uuid.to_string(game_id))),
+    #("joined", utils.timestamp_to_json(joined)),
+    #("ready", json.bool(ready)),
+    #("red", json.int(red)),
+    #("yellow", json.int(yellow)),
+    #("green", json.int(green)),
+    #("blue", json.int(blue)),
+    #("missed", json.int(missed)),
   ])
 }

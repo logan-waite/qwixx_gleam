@@ -1,1 +1,3 @@
 server/database.db
+server/priv/static/client.js
+server/priv/static/index.html

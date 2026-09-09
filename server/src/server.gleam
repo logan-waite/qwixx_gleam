@@ -1,7 +1,8 @@
 import dot_env
 import dot_env/env
+import gleam/dynamic/decode
 import gleam/erlang/process
-import gleam/http.{Get}
+import gleam/http.{Get, Post}
 import gleam/http/request.{type Request as BaseRequest}
 import gleam/http/response.{type Response as BaseResponse}
 import gleam/int
@@ -65,8 +66,7 @@ pub fn main() -> Nil {
             handler: handle_ws_request,
           )
         _ ->
-          // handle_request(db_conn, static_directory, _)
-          handle_request(Nil, static_directory, _)
+          handle_request(db_conn, static_directory, _)
           |> wisp_mist.handler(secret_key_base)
           |> fn(fun) { fun(req) }
       }
@@ -95,15 +95,14 @@ fn app_middleware(
 
 // Api
 fn handle_request(
-  _db_conn: Nil,
-  // _db_conn: sqlight.Connection,
+  db_conn: sqlight.Connection,
   static_directory: String,
   req: Request,
 ) -> Response {
   use req <- app_middleware(req, static_directory)
 
   case req.method, wisp.path_segments(req) {
-    _, ["api", ..rest] -> handle_api_request(req, rest)
+    _, ["api", ..rest] -> handle_api_request(db_conn, req, rest)
     Get, _ -> serve_index()
     _, _ -> wisp.not_found()
   }
@@ -126,21 +125,63 @@ fn serve_index() {
 }
 
 // Api Endpoints
-fn handle_api_request(req: Request, path: List(String)) {
+fn handle_api_request(db_conn, req: Request, path: List(String)) {
   case req.method, path {
-    Get, ["player"] -> {
-      let _player_id = case request.get_query(req) {
-        Ok(params) -> {
-          list.map(params, fn(params) { io.println(params.0 <> params.1) })
-          wisp.json_response("", 200)
+    Post, ["player"] -> {
+      use json <- wisp.require_json(req)
+
+      case decode.run(json, shared_player.player_decoder()) {
+        Ok(player_req) -> {
+          let sql_player =
+            sql.add_player(uuid.to_string(player_req.id), player_req.name)
+            |> parrot.run_query(db_conn)
+            |> list.first()
+          // Adding a player should always return 1 item
+
+          case sql_player {
+            Ok(sql_player) -> {
+              let player =
+                db_utils.sql_player_to_player(db_utils.Add(sql_player))
+              wisp.json_response(
+                shared_player.player_to_json(player) |> json.to_string(),
+                200,
+              )
+            }
+            Error(_err) -> wisp.internal_server_error()
+          }
         }
-        Error(_) -> {
-          io.println("error")
-          wisp.json_response("", 500)
+        Error(err) -> wisp.bad_request(string.inspect(err))
+      }
+    }
+    Get, ["player", id] -> {
+      let maybe_player =
+        sql.get_player(id)
+        |> parrot.run_query(db_conn)
+        |> list.map(db_utils.Get)
+        |> list.map(db_utils.sql_player_to_player)
+        |> array_to_option()
+
+      case maybe_player {
+        Some(player) -> {
+          wisp.json_response(
+            json.to_string(shared_player.player_to_json(player)),
+            200,
+          )
+        }
+        None -> {
+          wisp.not_found()
         }
       }
     }
     _, _ -> wisp.not_found()
+  }
+}
+
+fn array_to_option(list: List(t)) -> Option(t) {
+  case list {
+    [] -> None
+    [item] -> Some(item)
+    _ -> panic as "Can't turn a list with multiple elements into an Option"
   }
 }
 
@@ -181,10 +222,10 @@ fn handle_ws_request(state, message: mist.WebsocketMessage(a), conn) {
 }
 
 fn get_player(
-  db_conn: sqlight.Connection,
   player_id: String,
+  db_conn: sqlight.Connection,
 ) -> Option(Player) {
-  let rows = sql.get_player(player_id) |> parrot.run_query(db_conn, _)
+  let rows = sql.get_player(player_id) |> parrot.run_query(db_conn)
   case rows {
     [] -> None
     [db_player] -> Some(db_utils.sql_player_to_player(db_utils.Get(db_player)))
@@ -208,33 +249,33 @@ fn handle_app_event(
       Some(events.NoOp),
       WebSocketState(..state, player_game: updated_player_game),
     )
-    events.ClientConnected(updated_player) -> {
-      let player_id = uuid.to_string(updated_player.id)
-      let player = get_player(state.db_conn, player_id)
-      case player {
-        Some(player) -> #(
-          Some(events.ServerFoundPlayer(player)),
-          WebSocketState(..state, player:),
-        )
-        None -> {
-          let rows =
-            sql.add_player(player_id, updated_player.name)
-            |> parrot.run_query(state.db_conn, _)
-          case rows {
-            [db_player] -> {
-              #(
-                None,
-                WebSocketState(
-                  ..state,
-                  player: db_utils.sql_player_to_player(db_utils.Add(db_player)),
-                ),
-              )
-            }
-            _ -> #(None, state)
-          }
-        }
-      }
-    }
+    // events.ClientConnected(updated_player) -> {
+    //   let player_id = uuid.to_string(updated_player.id)
+    //   let player = get_player(state.db_conn, player_id)
+    //   case player {
+    //     Some(player) -> #(
+    //       Some(events.ServerFoundPlayer(player)),
+    //       WebSocketState(..state, player:),
+    //     )
+    //     None -> {
+    //       let rows =
+    //         sql.add_player(player_id, updated_player.name)
+    //         |> parrot.run_query(state.db_conn)
+    //       case rows {
+    //         [db_player] -> {
+    //           #(
+    //             None,
+    //             WebSocketState(
+    //               ..state,
+    //               player: db_utils.sql_player_to_player(db_utils.Add(db_player)),
+    //             ),
+    //           )
+    //         }
+    //         _ -> #(None, state)
+    //       }
+    //     }
+    //   }
+    // }
     _ -> #(None, state)
   }
 }

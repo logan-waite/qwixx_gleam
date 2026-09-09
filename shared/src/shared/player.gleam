@@ -29,7 +29,7 @@ pub type PlayerGame {
 }
 
 pub fn new_player() -> Player {
-  Player(id: uuid.v4(), name: None)
+  Player(id: uuid.nil, name: None)
 }
 
 pub fn new_player_game(player_id: Uuid, game_id: Uuid) -> PlayerGame {
@@ -58,14 +58,14 @@ pub fn player_decoder() -> decode.Decoder(Player) {
 
 pub fn player_to_json(player: Player) -> json.Json {
   let Player(id:, name:) = player
-  let name = case name {
-    Some(name) -> name
-    None -> "null"
-  }
+  // let name = case name {
+  //   Some(name) -> name
+  //   None -> json.to_string(json.nullable(None))
+  // }
 
   json.object([
     #("id", json.string(uuid.to_string(id))),
-    #("name", json.string(name)),
+    #("name", json.nullable(name, json.string)),
   ])
 }
 

@@ -1,5 +1,6 @@
 import gleam/dynamic/decode
 import gleam/float
+import gleam/http/response.{type Response}
 import gleam/int
 import gleam/io
 import gleam/json
@@ -16,6 +17,7 @@ import lustre/element/html
 import lustre/event
 import lustre_websocket as ws
 import modem
+import rsvp
 import youid/uuid
 
 import shared/dice.{type DiceState, DiceState, Die}
@@ -64,7 +66,7 @@ fn init(_) -> #(Model, Effect(Msg)) {
   let startup_effects = [
     ws.init("ws", WsWrapper),
     modem.init(on_url_change),
-    get_local_data(),
+    get_player_on_startup(),
   ]
 
   #(
@@ -106,6 +108,7 @@ type Msg {
   UserSavedName
   UserRolledDice
   UserToggledScoreBox(String)
+  ServerReturnedPlayer(Result(Player, rsvp.Error(String)))
   WsWrapper(ws.WebSocketEvent)
   OnRouteChange(Route)
   LocalStorageGet(Result(LocalData, Nil))
@@ -117,6 +120,21 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     UserSavedName -> update_player_name(model)
     UserRolledDice -> #(model, send_event(model.ws, events.RollDice))
     UserToggledScoreBox(value) -> update_player_game(model, value)
+    // Server Messages
+    ServerReturnedPlayer(request_result) -> {
+      case request_result {
+        Ok(player) -> #(
+          Model(..model, player:),
+          save_local_data(LocalData(player.id)),
+        )
+        Error(error) -> {
+          io.println(
+            "error from ServerReturnedPlayer: " <> string.inspect(error),
+          )
+          #(model, effect.none())
+        }
+      }
+    }
     // Websocket Messages
     WsWrapper(event) -> handle_ws_event(model, event)
     // Routes
@@ -188,6 +206,48 @@ fn send_event(socket, event) {
 }
 
 // Player
+fn get_player_on_startup() -> Effect(Msg) {
+  // use dispatch <- effect.from
+  // get from localstorage
+  let player_id =
+    get_localstorage("qwixx")
+    // parse to LocalData
+    |> result.try(fn(string) {
+      case json.parse(string, local_data_decoder()) {
+        Ok(local_data) -> Ok(local_data.player_id)
+        Error(err) -> {
+          io.println(string.inspect(err))
+          Error(Nil)
+        }
+      }
+    })
+    |> result.unwrap(uuid.nil)
+
+  case player_id {
+    id if id == uuid.nil -> {
+      // post new id to server and save to local storage
+      let new_id = uuid.v4()
+      let body = shared_player.player_to_json(Player(new_id, None))
+      let url = "/api/player"
+
+      rsvp.post(
+        url,
+        body,
+        rsvp.expect_json(shared_player.player_decoder(), ServerReturnedPlayer),
+      )
+    }
+    id -> {
+      // get player from server
+      let url = "/api/player/" <> uuid.to_string(id)
+
+      rsvp.get(
+        url,
+        rsvp.expect_json(shared_player.player_decoder(), ServerReturnedPlayer),
+      )
+    }
+  }
+}
+
 fn update_player_name(model: Model) -> #(Model, Effect(Msg)) {
   let updated_player = Player(..model.player, name: Some(model.temp_name))
   let new_model = Model(..model, player: updated_player, temp_name: "")
@@ -394,7 +454,7 @@ type LocalData {
 fn local_data_decoder() -> decode.Decoder(LocalData) {
   use player_id <- decode.field("player_id", decode.string)
   let assert Ok(uuid) = uuid.from_string(player_id)
-  io.println("saved id: " <> uuid)
+  io.println("saved id: " <> uuid.to_string(uuid))
   decode.success(LocalData(player_id: uuid))
 }
 
@@ -417,7 +477,7 @@ fn get_local_data() -> Effect(Msg) {
   dispatch(LocalStorageGet(result))
 }
 
-fn save_local_data(data) -> Effect(msg) {
+fn save_local_data(data: LocalData) -> Effect(msg) {
   use _ <- effect.from
   let local_data_string = local_data_to_json(data) |> json.to_string()
 

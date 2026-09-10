@@ -10,10 +10,11 @@ RETURNING *;
 SELECT * FROM players
 WHERE id = ?;
 
--- name: UpdatePlayer :exec
+-- name: UpdatePlayer :one
 UPDATE players
 SET name = ?
-WHERE id = ?;
+WHERE id = ?
+RETURNING *;
 
 -- name: AddGame :one
 INSERT INTO games (
@@ -30,10 +31,11 @@ SELECT * FROM games;
 SELECT * FROM games
 WHERE code = ?;
 
--- name: UpdateGame :exec
+-- name: UpdateGame :one
 UPDATE games
 SET status = ?
-WHERE id = ?;
+WHERE id = ?
+RETURNING *;
 
 -- name: AddPlayerGame :one
 INSERT INTO player_game (
@@ -47,7 +49,7 @@ RETURNING *;
 SELECT * FROM player_game
 WHERE player_id = ? AND game_id = ?;
 
--- name: UpdatePlayerGame :exec
+-- name: UpdatePlayerGame :one
 UPDATE player_game
 SET ready = ?,
 red = ?,
@@ -55,4 +57,5 @@ yellow = ?,
 green = ?,
 blue = ?,
 missed = ?
-WHERE id = ?;
+WHERE id = ?
+RETURNING *;

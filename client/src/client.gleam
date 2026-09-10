@@ -252,8 +252,18 @@ fn update_player_name(model: Model) -> #(Model, Effect(Msg)) {
   let updated_player = Player(..model.player, name: Some(model.temp_name))
   let new_model = Model(..model, player: updated_player, temp_name: "")
 
+  let url = "/api/player"
+  let body = shared_player.player_to_json(updated_player)
+
+  let effect =
+    rsvp.put(
+      url,
+      body,
+      rsvp.expect_json(shared_player.player_decoder(), ServerReturnedPlayer),
+    )
+
   // Send updated name to server
-  #(new_model, effect.none())
+  #(new_model, effect)
 }
 
 // Dice

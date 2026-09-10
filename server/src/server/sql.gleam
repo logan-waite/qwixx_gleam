@@ -50,15 +50,30 @@ pub fn get_player_decoder() -> decode.Decoder(GetPlayer) {
   decode.success(GetPlayer(id:, name:))
 }
 
+pub type UpdatePlayer {
+  UpdatePlayer(id: String, name: Option(String))
+}
+
 pub fn update_player(name name: Option(String), id id: String) {
   let sql =
     "UPDATE players
 SET name = ?
-WHERE id = ?"
-  #(sql, [
-    dev.ParamNullable(option.map(name, fn(v) { dev.ParamString(v) })),
-    dev.ParamString(id),
-  ])
+WHERE id = ?
+RETURNING id, name"
+  #(
+    sql,
+    [
+      dev.ParamNullable(option.map(name, fn(v) { dev.ParamString(v) })),
+      dev.ParamString(id),
+    ],
+    update_player_decoder(),
+  )
+}
+
+pub fn update_player_decoder() -> decode.Decoder(UpdatePlayer) {
+  use id <- decode.field(0, decode.string)
+  use name <- decode.field(1, decode.optional(decode.string))
+  decode.success(UpdatePlayer(id:, name:))
 }
 
 pub type AddGame {
@@ -117,15 +132,31 @@ pub fn get_game_with_code_decoder() -> decode.Decoder(GetGameWithCode) {
   decode.success(GetGameWithCode(id:, code:, status:))
 }
 
+pub type UpdateGame {
+  UpdateGame(id: String, code: String, status: Option(String))
+}
+
 pub fn update_game(status status: Option(String), id id: String) {
   let sql =
     "UPDATE games
 SET status = ?
-WHERE id = ?"
-  #(sql, [
-    dev.ParamNullable(option.map(status, fn(v) { dev.ParamString(v) })),
-    dev.ParamString(id),
-  ])
+WHERE id = ?
+RETURNING id, code, status"
+  #(
+    sql,
+    [
+      dev.ParamNullable(option.map(status, fn(v) { dev.ParamString(v) })),
+      dev.ParamString(id),
+    ],
+    update_game_decoder(),
+  )
+}
+
+pub fn update_game_decoder() -> decode.Decoder(UpdateGame) {
+  use id <- decode.field(0, decode.string)
+  use code <- decode.field(1, decode.string)
+  use status <- decode.field(2, decode.optional(decode.string))
+  decode.success(UpdateGame(id:, code:, status:))
 }
 
 pub type AddPlayerGame {
@@ -234,6 +265,21 @@ pub fn get_player_game_decoder() -> decode.Decoder(GetPlayerGame) {
   ))
 }
 
+pub type UpdatePlayerGame {
+  UpdatePlayerGame(
+    id: Int,
+    player_id: String,
+    game_id: String,
+    joined: Option(decode.Dynamic),
+    ready: Option(Int),
+    red: Option(Int),
+    yellow: Option(Int),
+    green: Option(Int),
+    blue: Option(Int),
+    missed: Option(Int),
+  )
+}
+
 pub fn update_player_game(
   ready ready: Option(Int),
   red red: Option(Int),
@@ -251,14 +297,44 @@ yellow = ?,
 green = ?,
 blue = ?,
 missed = ?
-WHERE id = ?"
-  #(sql, [
-    dev.ParamNullable(option.map(ready, fn(v) { dev.ParamInt(v) })),
-    dev.ParamNullable(option.map(red, fn(v) { dev.ParamInt(v) })),
-    dev.ParamNullable(option.map(yellow, fn(v) { dev.ParamInt(v) })),
-    dev.ParamNullable(option.map(green, fn(v) { dev.ParamInt(v) })),
-    dev.ParamNullable(option.map(blue, fn(v) { dev.ParamInt(v) })),
-    dev.ParamNullable(option.map(missed, fn(v) { dev.ParamInt(v) })),
-    dev.ParamInt(id),
-  ])
+WHERE id = ?
+RETURNING id, player_id, game_id, joined, ready, red, yellow, green, blue, missed"
+  #(
+    sql,
+    [
+      dev.ParamNullable(option.map(ready, fn(v) { dev.ParamInt(v) })),
+      dev.ParamNullable(option.map(red, fn(v) { dev.ParamInt(v) })),
+      dev.ParamNullable(option.map(yellow, fn(v) { dev.ParamInt(v) })),
+      dev.ParamNullable(option.map(green, fn(v) { dev.ParamInt(v) })),
+      dev.ParamNullable(option.map(blue, fn(v) { dev.ParamInt(v) })),
+      dev.ParamNullable(option.map(missed, fn(v) { dev.ParamInt(v) })),
+      dev.ParamInt(id),
+    ],
+    update_player_game_decoder(),
+  )
+}
+
+pub fn update_player_game_decoder() -> decode.Decoder(UpdatePlayerGame) {
+  use id <- decode.field(0, decode.int)
+  use player_id <- decode.field(1, decode.string)
+  use game_id <- decode.field(2, decode.string)
+  use joined <- decode.field(3, decode.optional(decode.dynamic))
+  use ready <- decode.field(4, decode.optional(decode.int))
+  use red <- decode.field(5, decode.optional(decode.int))
+  use yellow <- decode.field(6, decode.optional(decode.int))
+  use green <- decode.field(7, decode.optional(decode.int))
+  use blue <- decode.field(8, decode.optional(decode.int))
+  use missed <- decode.field(9, decode.optional(decode.int))
+  decode.success(UpdatePlayerGame(
+    id:,
+    player_id:,
+    game_id:,
+    joined:,
+    ready:,
+    red:,
+    yellow:,
+    green:,
+    blue:,
+    missed:,
+  ))
 }

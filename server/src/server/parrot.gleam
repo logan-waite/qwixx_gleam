@@ -23,14 +23,8 @@ fn parrot_to_sqlight(param: dev.Param) -> sqlight.Value {
 pub fn run_query(
   query_info: #(String, List(dev.Param), decode.Decoder(d)),
   conn: sqlight.Connection,
-) -> List(d) {
+) -> Result(List(d), sqlight.Error) {
   let #(sql, params, expecting) = query_info
   let with = list.map(params, parrot_to_sqlight)
-  case sqlight.query(sql, conn, with, expecting) {
-    Ok(results) -> results
-    Error(err) -> {
-      io.println(string.inspect(err))
-      []
-    }
-  }
+  sqlight.query(sql, conn, with, expecting)
 }

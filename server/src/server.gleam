@@ -2,7 +2,7 @@ import dot_env
 import dot_env/env
 import gleam/dynamic/decode
 import gleam/erlang/process
-import gleam/http.{Get, Post}
+import gleam/http.{Get, Post, Put}
 import gleam/http/request.{type Request as BaseRequest}
 import gleam/http/response.{type Response as BaseResponse}
 import gleam/int
@@ -20,9 +20,7 @@ import wisp.{type Request, type Response}
 import wisp/wisp_mist
 import youid/uuid
 
-import server/db_utils
-import server/parrot
-import server/sql
+import server/player_service
 import shared/dice.{type DiceState, DiceState, Die}
 import shared/events.{type AppEvent}
 import shared/player.{type Player, type PlayerGame} as shared_player
@@ -131,57 +129,22 @@ fn handle_api_request(db_conn, req: Request, path: List(String)) {
       use json <- wisp.require_json(req)
 
       case decode.run(json, shared_player.player_decoder()) {
-        Ok(player_req) -> {
-          let sql_player =
-            sql.add_player(uuid.to_string(player_req.id), player_req.name)
-            |> parrot.run_query(db_conn)
-            |> list.first()
-          // Adding a player should always return 1 item
-
-          case sql_player {
-            Ok(sql_player) -> {
-              let player =
-                db_utils.sql_player_to_player(db_utils.Add(sql_player))
-              wisp.json_response(
-                shared_player.player_to_json(player) |> json.to_string(),
-                200,
-              )
-            }
-            Error(_err) -> wisp.internal_server_error()
-          }
-        }
+        Ok(player_req) -> player_service.create_player(player_req, db_conn)
         Error(err) -> wisp.bad_request(string.inspect(err))
       }
     }
     Get, ["player", id] -> {
-      let maybe_player =
-        sql.get_player(id)
-        |> parrot.run_query(db_conn)
-        |> list.map(db_utils.Get)
-        |> list.map(db_utils.sql_player_to_player)
-        |> array_to_option()
+      player_service.get_player(id, db_conn)
+    }
+    Put, ["player"] -> {
+      use json <- wisp.require_json(req)
 
-      case maybe_player {
-        Some(player) -> {
-          wisp.json_response(
-            json.to_string(shared_player.player_to_json(player)),
-            200,
-          )
-        }
-        None -> {
-          wisp.not_found()
-        }
+      case decode.run(json, shared_player.player_decoder()) {
+        Ok(player) -> player_service.update_player(player, db_conn)
+        Error(err) -> wisp.bad_request(string.inspect(err))
       }
     }
     _, _ -> wisp.not_found()
-  }
-}
-
-fn array_to_option(list: List(t)) -> Option(t) {
-  case list {
-    [] -> None
-    [item] -> Some(item)
-    _ -> panic as "Can't turn a list with multiple elements into an Option"
   }
 }
 
@@ -221,18 +184,6 @@ fn handle_ws_request(state, message: mist.WebsocketMessage(a), conn) {
   }
 }
 
-fn get_player(
-  player_id: String,
-  db_conn: sqlight.Connection,
-) -> Option(Player) {
-  let rows = sql.get_player(player_id) |> parrot.run_query(db_conn)
-  case rows {
-    [] -> None
-    [db_player] -> Some(db_utils.sql_player_to_player(db_utils.Get(db_player)))
-    _ -> None
-  }
-}
-
 fn handle_app_event(
   event: AppEvent,
   state,
@@ -249,33 +200,6 @@ fn handle_app_event(
       Some(events.NoOp),
       WebSocketState(..state, player_game: updated_player_game),
     )
-    // events.ClientConnected(updated_player) -> {
-    //   let player_id = uuid.to_string(updated_player.id)
-    //   let player = get_player(state.db_conn, player_id)
-    //   case player {
-    //     Some(player) -> #(
-    //       Some(events.ServerFoundPlayer(player)),
-    //       WebSocketState(..state, player:),
-    //     )
-    //     None -> {
-    //       let rows =
-    //         sql.add_player(player_id, updated_player.name)
-    //         |> parrot.run_query(state.db_conn)
-    //       case rows {
-    //         [db_player] -> {
-    //           #(
-    //             None,
-    //             WebSocketState(
-    //               ..state,
-    //               player: db_utils.sql_player_to_player(db_utils.Add(db_player)),
-    //             ),
-    //           )
-    //         }
-    //         _ -> #(None, state)
-    //       }
-    //     }
-    //   }
-    // }
     _ -> #(None, state)
   }
 }

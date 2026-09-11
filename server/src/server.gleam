@@ -15,15 +15,18 @@ import lustre/attribute
 import lustre/element
 import lustre/element/html
 import mist.{type Connection, type ResponseData}
+import shared/game
 import sqlight
 import wisp.{type Request, type Response}
 import wisp/wisp_mist
 import youid/uuid
 
+import server/game_service
 import server/player_service
 import shared/dice.{type DiceState, DiceState, Die}
 import shared/events.{type AppEvent}
-import shared/player.{type Player, type PlayerGame} as shared_player
+import shared/game as app_game
+import shared/player.{type Player, type PlayerGame} as app_player
 
 pub fn main() -> Nil {
   wisp.configure_logger()
@@ -39,8 +42,8 @@ pub fn main() -> Nil {
   use db_conn <- sqlight.with_connection("file:database.db")
 
   // initial websocket state (will come from db eventually)
-  let player = shared_player.new_player()
-  let player_game = shared_player.new_player_game(player.id, uuid.v4())
+  let player = app_player.new_player()
+  let player_game = app_player.new_player_game(player.id, uuid.v4())
   let ws_state = WebSocketState(db_conn:, player:, player_game:)
 
   let assert Ok(priv_directory) = wisp.priv_directory("server")
@@ -128,7 +131,7 @@ fn handle_api_request(db_conn, req: Request, path: List(String)) {
     Post, ["player"] -> {
       use json <- wisp.require_json(req)
 
-      case decode.run(json, shared_player.player_decoder()) {
+      case decode.run(json, app_player.player_decoder()) {
         Ok(player_req) -> player_service.create_player(player_req, db_conn)
         Error(err) -> wisp.bad_request(string.inspect(err))
       }
@@ -139,10 +142,29 @@ fn handle_api_request(db_conn, req: Request, path: List(String)) {
     Put, ["player"] -> {
       use json <- wisp.require_json(req)
 
-      case decode.run(json, shared_player.player_decoder()) {
+      case decode.run(json, app_player.player_decoder()) {
         Ok(player) -> player_service.update_player(player, db_conn)
         Error(err) -> wisp.bad_request(string.inspect(err))
       }
+    }
+    Post, ["game"] -> {
+      use json <- wisp.require_json(req)
+
+      case decode.run(json, app_player.player_decoder()) {
+        Ok(player) -> {
+          // create new game
+          let game = game_service.create_game(db_conn)
+          let body = app_game.game_to_json(game) |> json.to_string()
+
+          wisp.created()
+          |> wisp.json_body(body)
+        }
+        Error(err) -> {
+          wisp.bad_request(string.inspect(err))
+        }
+      }
+      // create player game
+      // return game
     }
     _, _ -> wisp.not_found()
   }

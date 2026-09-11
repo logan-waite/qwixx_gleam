@@ -1,6 +1,9 @@
 import gleam/dynamic/decode
 import gleam/json
+import youid/uuid.{type Uuid}
+
 import shared/dice
+import shared/utils
 
 // Game
 pub type GameStatus {
@@ -11,11 +14,16 @@ pub type GameStatus {
 
 pub type Game {
   Game(
-    dice_state: dice.DiceState,
-    current_turn: Int,
-    game_code: String,
-    game_status: GameStatus,
+    id: Uuid,
+    code: String,
+    status: GameStatus,
+    // dice_state: dice.DiceState,
+    // current_turn: Int,
   )
+}
+
+pub fn empty_game() {
+  Game(id: uuid.nil, code: "00000", status: Lobby)
 }
 
 // Game Encoder/Decoder
@@ -30,12 +38,13 @@ fn game_status_decoder() -> decode.Decoder(GameStatus) {
 }
 
 pub fn game_decoder() -> decode.Decoder(Game) {
-  use dice_state <- decode.field("dice_state", dice.dice_state_decoder())
-  use current_turn <- decode.field("current_turn", decode.int)
-  use game_code <- decode.field("game_code", decode.string)
-  use game_status <- decode.field("game_status", game_status_decoder())
+  // use dice_state <- decode.field("dice_state", dice.dice_state_decoder())
+  // use current_turn <- decode.field("current_turn", decode.int)
+  use id <- decode.field("id", utils.uuid_decoder())
+  use code <- decode.field("code", decode.string)
+  use status <- decode.field("status", game_status_decoder())
 
-  decode.success(Game(dice_state:, current_turn:, game_code:, game_status:))
+  decode.success(Game(id:, code:, status:))
 }
 
 fn game_status_to_string(status: GameStatus) -> String {
@@ -46,13 +55,21 @@ fn game_status_to_string(status: GameStatus) -> String {
   }
 }
 
+pub fn game_status_from_string(status: String) -> GameStatus {
+  case status {
+    "lobby" -> Lobby
+    "in-progress" -> InProgress
+    "finished" -> Finished
+    _ -> panic as "unhandled game status"
+  }
+}
+
 pub fn game_to_json(game: Game) -> json.Json {
-  let Game(dice_state:, current_turn:, game_code:, game_status:) = game
+  let Game(id:, code:, status:) = game
 
   json.object([
-    #("dice_state", dice.dice_state_to_json(dice_state)),
-    #("current_turn", json.int(current_turn)),
-    #("game_code", json.string(game_code)),
-    #("game_status", json.string(game_status_to_string(game_status))),
+    #("id", json.string(id |> uuid.to_string())),
+    #("code", json.string(code)),
+    #("status", json.string(game_status_to_string(status))),
   ])
 }

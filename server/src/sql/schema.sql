@@ -11,7 +11,7 @@ CREATE TABLE games (
 	status TEXT DEFAULT 'lobby'
 );
 
-DROP TABLE IF EXISTS player_game;
+DROP TABLE IF EXISTS player_games;
 CREATE TABLE player_game (
 	id INTEGER PRIMARY KEY,
 	player_id TEXT NOT NULL,

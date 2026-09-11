@@ -10,14 +10,7 @@ import youid/uuid.{type Uuid}
 import server/parrot
 import server/sql
 import shared/player.{type Player, Player} as app_player
-
-fn array_to_option(list: List(t)) -> Option(t) {
-  case list {
-    [] -> None
-    [item] -> Some(item)
-    _ -> panic as "Can't turn a list with multiple elements into an Option"
-  }
-}
+import shared/utils
 
 fn add_player_to_player(add_player: sql.AddPlayer) -> Player {
   let sql.AddPlayer(id:, name:) = add_player
@@ -48,7 +41,7 @@ pub fn create_player(player: Player, db_conn: sqlight.Connection) {
       let maybe_player =
         row
         |> list.map(add_player_to_player)
-        |> array_to_option()
+        |> utils.unwrap_list()
 
       case maybe_player {
         Some(player) -> {
@@ -82,7 +75,7 @@ pub fn get_player(id: String, db_conn: sqlight.Connection) {
       let maybe_player =
         row
         |> list.map(get_player_to_player)
-        |> array_to_option()
+        |> utils.unwrap_list()
 
       case maybe_player {
         Some(player) -> {
@@ -118,7 +111,7 @@ pub fn update_player(player: Player, db_conn: sqlight.Connection) {
       let maybe_player =
         row
         |> list.map(update_player_to_player)
-        |> array_to_option()
+        |> utils.unwrap_list()
 
       case maybe_player {
         Some(player) -> {

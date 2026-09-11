@@ -20,7 +20,9 @@ import modem
 import rsvp
 import youid/uuid.{type Uuid}
 
+import client/context.{type Context, Context}
 import client/local_data.{LocalData}
+import client/routes.{type Route}
 import client/start_view.{type Msg as SVMsg}
 import shared/dice.{type DiceState, DiceState, Die}
 import shared/events.{type AppEvent}
@@ -36,14 +38,12 @@ pub fn main() -> Nil {
 // -----------------------------------------------
 // Model -----------------------------------------
 // -----------------------------------------------
-
 type Model {
   Model(
     ws: Option(ws.WebSocket),
-    current_route: Route,
+    context: Context,
     dice_state: DiceState,
     errors: String,
-    player: Player,
     player_game: PlayerGame,
     sv_model: start_view.Model,
   )
@@ -55,10 +55,10 @@ fn init(_) -> #(Model, Effect(Msg)) {
     |> result.map(fn(initial_uri) { uri.path_segments(initial_uri.path) })
     |> fn(path) {
       case path {
-        Ok([""]) -> Start
-        Ok(["lobby"]) -> Lobby
-        Ok(["game"]) -> Game
-        _ -> Start
+        Ok([""]) -> routes.Start
+        Ok(["lobby", code]) -> routes.Lobby(code)
+        Ok(["game", code]) -> routes.Game(code)
+        _ -> routes.Start
       }
     }
   let dice_state = dice.new_dice_state()
@@ -71,13 +71,14 @@ fn init(_) -> #(Model, Effect(Msg)) {
     local_get_player_id(),
   ]
 
+  let context = Context(player:, current_route: route)
+
   #(
     Model(
       ws: None,
+      context:,
       dice_state:,
-      player:,
       errors: "",
-      current_route: route,
       player_game:,
       sv_model: start_view.new_model(),
     ),
@@ -89,19 +90,12 @@ fn init(_) -> #(Model, Effect(Msg)) {
 // Update ----------------------------------------
 // -----------------------------------------------
 
-// Routes
-type Route {
-  Start
-  Lobby
-  Game
-}
-
 fn on_url_change(uri: Uri) -> Msg {
   case uri.path_segments(uri.path) {
-    [""] -> OnRouteChange(Start)
-    ["lobby"] -> OnRouteChange(Lobby)
-    ["game"] -> OnRouteChange(Game)
-    _ -> OnRouteChange(Start)
+    [""] -> OnRouteChange(routes.Start)
+    ["lobby", code] -> OnRouteChange(routes.Lobby(code))
+    ["game", code] -> OnRouteChange(routes.Game(code))
+    _ -> OnRouteChange(routes.Start)
   }
 }
 
@@ -118,11 +112,11 @@ type Msg {
 fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
   case msg {
     StartViewMsg(sv_msg) -> {
-      let #(player, sv_model, sv_effect) =
-        start_view.update(model.player, model.sv_model, sv_msg)
+      let #(context, sv_model, sv_effect) =
+        start_view.update(model.context, model.sv_model, sv_msg)
 
       #(
-        Model(..model, player:, sv_model:),
+        Model(..model, context:, sv_model:),
         sv_effect |> effect.map(StartViewMsg),
       )
     }
@@ -133,7 +127,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     WsWrapper(event) -> handle_ws_event(model, event)
     // Routes
     OnRouteChange(route) -> #(
-      Model(..model, current_route: route),
+      Model(..model, context: Context(..model.context, current_route: route)),
       effect.none(),
     )
     // Other
@@ -176,10 +170,10 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     }
     ServerReturnedPlayer(request_result) -> {
       case request_result {
-        Ok(player) -> #(
-          Model(..model, player:),
-          local_save_player_id(player.id),
-        )
+        Ok(player) -> {
+          let context = Context(..model.context, player:)
+          #(Model(..model, context:), local_save_player_id(player.id))
+        }
         Error(error) -> {
           io.println(
             "error from ServerReturnedPlayer: " <> string.inspect(error),
@@ -196,7 +190,7 @@ fn handle_ws_event(model: Model, ws_event: ws.WebSocketEvent) {
     ws.InvalidUrl -> panic
     ws.OnOpen(socket) -> #(
       Model(..model, ws: Some(socket)),
-      send_event(Some(socket), events.ClientConnected(model.player)),
+      send_event(Some(socket), events.ClientConnected(model.context.player)),
     )
     ws.OnTextMessage(msg) -> {
       events.parse_event(msg)
@@ -302,21 +296,21 @@ fn update_player_game(model: Model, value: String) {
 // -----------------------------------------------
 
 fn view(model: Model) -> Element(Msg) {
-  case model.current_route {
-    Start -> {
-      start_view.view(model.player, model.sv_model)
+  case model.context.current_route {
+    routes.Start -> {
+      start_view.view(model.context, model.sv_model)
       |> element.map(StartViewMsg)
     }
-    Lobby -> lobby_view(model)
-    Game -> game_view(model)
+    routes.Lobby(code) -> lobby_view(model, code)
+    routes.Game(code) -> game_view(model, code)
   }
 }
 
-fn lobby_view(model: Model) -> Element(Msg) {
-  html.div([], [html.text("Lobby Page!")])
+fn lobby_view(model: Model, code: String) -> Element(Msg) {
+  html.div([], [html.text("Lobby for game " <> code <> "!")])
 }
 
-fn game_view(model: Model) -> Element(Msg) {
+fn game_view(model: Model, _code: String) -> Element(Msg) {
   html.div([], [
     html.button([event.on_click(UserRolledDice)], [html.text("Roll Dice")]),
     dice_tray(model.dice_state),

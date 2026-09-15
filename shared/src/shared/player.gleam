@@ -12,6 +12,7 @@ pub type Player {
 
 pub type PlayerGame {
   PlayerGame(
+    id: Uuid,
     player_id: Uuid,
     game_id: Uuid,
     joined: Timestamp,
@@ -34,6 +35,7 @@ pub fn new_player() -> Player {
 
 pub fn new_player_game(player_id: Uuid, game_id: Uuid) -> PlayerGame {
   PlayerGame(
+    id: uuid.nil,
     player_id:,
     game_id:,
     joined: timestamp.system_time(),
@@ -70,6 +72,7 @@ pub fn player_to_json(player: Player) -> json.Json {
 }
 
 pub fn player_game_decoder() -> decode.Decoder(PlayerGame) {
+  use id <- decode.field("id", utils.uuid_decoder())
   use player_id <- decode.field("player_id", utils.uuid_decoder())
   use game_id <- decode.field("game_id", utils.uuid_decoder())
   use joined <- decode.field("joined", utils.timestamp_decoder())
@@ -81,6 +84,7 @@ pub fn player_game_decoder() -> decode.Decoder(PlayerGame) {
   use missed <- decode.field("missed", decode.int)
 
   decode.success(PlayerGame(
+    id:,
     player_id:,
     game_id:,
     joined:,
@@ -95,6 +99,7 @@ pub fn player_game_decoder() -> decode.Decoder(PlayerGame) {
 
 pub fn player_game_to_json(player_game: PlayerGame) -> json.Json {
   let PlayerGame(
+    id:,
     player_id:,
     game_id:,
     joined:,
@@ -107,6 +112,7 @@ pub fn player_game_to_json(player_game: PlayerGame) -> json.Json {
   ) = player_game
 
   json.object([
+    #("id", json.string(uuid.to_string(player_id))),
     #("player_id", json.string(uuid.to_string(player_id))),
     #("game_id", json.string(uuid.to_string(game_id))),
     #("joined", utils.timestamp_to_json(joined)),

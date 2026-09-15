@@ -61,7 +61,8 @@ pub fn update(
     ServerReturnedGame(req_result) -> {
       case req_result {
         Ok(game) -> {
-          #(context, model, modem.push("lobby/" <> game.code, None, None))
+          let new_context = Context(..context, game:)
+          #(new_context, model, modem.push("lobby/" <> game.code, None, None))
         }
         Error(err) -> {
           io.println(string.inspect(err))
@@ -71,11 +72,7 @@ pub fn update(
     }
     ServerReturnedPlayer(req_result) -> {
       case req_result {
-        Ok(player) -> #(
-          Context(..context, player:),
-          Model(..model),
-          effect.none(),
-        )
+        Ok(player) -> #(Context(..context, player:), model, effect.none())
         Error(error) -> {
           io.println(
             "error from ServerReturnedPlayer: " <> string.inspect(error),

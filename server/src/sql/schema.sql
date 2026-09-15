@@ -8,21 +8,21 @@ DROP TABLE IF EXISTS games;
 CREATE TABLE games (
 	id	TEXT PRIMARY KEY,
 	code TEXT UNIQUE NOT NULL,
-	status TEXT DEFAULT 'lobby'
+	status TEXT NOT NULL DEFAULT 'lobby'
 );
 
 DROP TABLE IF EXISTS player_games;
-CREATE TABLE player_game (
-	id INTEGER PRIMARY KEY,
+CREATE TABLE player_games (
+	id TEXT PRIMARY KEY,
 	player_id TEXT NOT NULL,
 	game_id TEXT NOT NULL,
-	joined STRING DEFAULT (datetime('subsec')),
-	ready INTEGER DEFAULT FALSE,
-	red INTEGER DEFAULT 0, -- Bitmask
-	yellow INTEGER DEFAULT 0, -- Bitmask
-	green INTEGER DEFAULT 0, -- Bitmask
-	blue INTEGER DEFAULT 0, -- Bitmask
-	missed INTEGER DEFAULT 0,
+	joined INTEGER NOT NULL, -- Unix Timestamp (Nanosecond Precision)
+	ready INTEGER NOT NULL DEFAULT FALSE,
+	red INTEGER NOT NULL DEFAULT 0, -- Bitmask
+	yellow INTEGER NOT NULL DEFAULT 0, -- Bitmask
+	green INTEGER NOT NULL DEFAULT 0, -- Bitmask
+	blue INTEGER NOT NULL DEFAULT 0, -- Bitmask
+	missed INTEGER NOT NULL DEFAULT 0,
 	FOREIGN KEY (player_id)
 		REFERENCES players (id),
 	FOREIGN KEY (game_id)

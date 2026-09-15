@@ -10,27 +10,10 @@ import server/parrot
 import server/sql
 import shared/utils
 
-fn add_game_to_game(add_game: sql.AddGame) -> Game {
-  let sql.AddGame(id:, code:, status:) = add_game
-  let assert Ok(game_id) = uuid.from_string(id)
-  let status = option.unwrap(status, "lobby") |> game.game_status_from_string()
-  Game(id: game_id, code:, status:)
-}
-
-fn generate_game_code() -> String {
-  // five random letters (all caps)
-  // leads to ≈12m combos
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-  |> string.split("")
-  |> list.sample(5)
-  |> list.shuffle()
-  |> string.join("")
-}
-
 pub fn create_game(db_conn: sqlight.Connection) -> game.Game {
   let code = get_game_code([], db_conn)
   let id = uuid.v4() |> uuid.to_string()
-  let sql = sql.add_game(id: id, code: code)
+  let sql = sql.add_game(id: id, code: code, status: "lobby")
   case parrot.run_query(sql, db_conn) {
     Ok(row) -> {
       let maybe_game =
@@ -49,6 +32,23 @@ pub fn create_game(db_conn: sqlight.Connection) -> game.Game {
       todo
     }
   }
+}
+
+fn add_game_to_game(add_game: sql.AddGame) -> Game {
+  let sql.AddGame(id:, code:, status:) = add_game
+  let assert Ok(game_id) = uuid.from_string(id)
+  let status = status |> game.game_status_from_string()
+  Game(id: game_id, code:, status:)
+}
+
+fn generate_game_code() -> String {
+  // five random letters (all caps)
+  // leads to ≈12m combos
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+  |> string.split("")
+  |> list.sample(5)
+  |> list.shuffle()
+  |> string.join("")
 }
 
 fn get_game_code(

@@ -154,6 +154,8 @@ fn handle_api_request(db_conn, req: Request, path: List(String)) {
         Ok(player) -> {
           // create new game
           let game = game_service.create_game(db_conn)
+          let player_game =
+            player_service.create_player_game(player.id, game.id, db_conn)
           let body = app_game.game_to_json(game) |> json.to_string()
 
           wisp.created()

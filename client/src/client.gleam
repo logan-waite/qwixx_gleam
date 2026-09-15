@@ -26,7 +26,8 @@ import client/routes.{type Route}
 import client/start_view.{type Msg as SVMsg}
 import shared/dice.{type DiceState, DiceState, Die}
 import shared/events.{type AppEvent}
-import shared/player.{type Player, type PlayerGame, Player, PlayerGame} as shared_player
+import shared/game.{type Game, Game} as app_game
+import shared/player.{type Player, type PlayerGame, Player, PlayerGame} as app_player
 
 pub fn main() -> Nil {
   let app = lustre.application(init, update, view)
@@ -62,8 +63,9 @@ fn init(_) -> #(Model, Effect(Msg)) {
       }
     }
   let dice_state = dice.new_dice_state()
-  let player = shared_player.new_player()
-  let player_game = shared_player.new_player_game(player.id, uuid.v4())
+  let player = app_player.new_player()
+  let game = app_game.empty_game()
+  let player_game = app_player.new_player_game(player.id, game.id)
 
   let startup_effects = [
     ws.init("ws", WsWrapper),
@@ -71,7 +73,7 @@ fn init(_) -> #(Model, Effect(Msg)) {
     local_get_player_id(),
   ]
 
-  let context = Context(player:, current_route: route)
+  let context = Context(player:, current_route: route, game:)
 
   #(
     Model(
@@ -136,7 +138,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
         id if id == uuid.nil -> {
           // post new id to server and save to local storage
           let new_id = uuid.v4()
-          let body = shared_player.player_to_json(Player(new_id, None))
+          let body = app_player.player_to_json(Player(new_id, None))
           let url = "/api/player"
 
           #(
@@ -145,7 +147,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
               url,
               body,
               rsvp.expect_json(
-                shared_player.player_decoder(),
+                app_player.player_decoder(),
                 ServerReturnedPlayer,
               ),
             ),
@@ -160,7 +162,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
             rsvp.get(
               url,
               rsvp.expect_json(
-                shared_player.player_decoder(),
+                app_player.player_decoder(),
                 ServerReturnedPlayer,
               ),
             ),
@@ -283,7 +285,7 @@ fn update_player_game(model: Model, value: String) {
   }
   io.println(
     "updated player game: "
-    <> shared_player.player_game_to_json(player_game) |> json.to_string(),
+    <> app_player.player_game_to_json(player_game) |> json.to_string(),
   )
   #(
     Model(..model, player_game:),
@@ -301,16 +303,16 @@ fn view(model: Model) -> Element(Msg) {
       start_view.view(model.context, model.sv_model)
       |> element.map(StartViewMsg)
     }
-    routes.Lobby(code) -> lobby_view(model, code)
-    routes.Game(code) -> game_view(model, code)
+    routes.Lobby(_) -> lobby_view(model)
+    routes.Game(_) -> game_view(model)
   }
 }
 
-fn lobby_view(model: Model, code: String) -> Element(Msg) {
-  html.div([], [html.text("Lobby for game " <> code <> "!")])
+fn lobby_view(model: Model) -> Element(Msg) {
+  html.div([], [html.text("Lobby for game " <> model.context.game.code <> "!")])
 }
 
-fn game_view(model: Model, _code: String) -> Element(Msg) {
+fn game_view(model: Model) -> Element(Msg) {
   html.div([], [
     html.button([event.on_click(UserRolledDice)], [html.text("Roll Dice")]),
     dice_tray(model.dice_state),

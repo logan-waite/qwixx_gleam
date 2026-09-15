@@ -1,6 +1,6 @@
 -- name: AddPlayer :one
 INSERT INTO players (
-	id, name
+	id, name 
 ) VALUES (
 	?, ?
 )
@@ -18,9 +18,9 @@ RETURNING *;
 
 -- name: AddGame :one
 INSERT INTO games (
-	id, code 
+	id, code, status 
 ) VALUES (
-	?, ?
+	?, ?, ?
 )
 RETURNING *;
 
@@ -38,19 +38,19 @@ WHERE id = ?
 RETURNING *;
 
 -- name: AddPlayerGame :one
-INSERT INTO player_game (
-	player_id, game_id
+INSERT INTO player_games (
+	id, player_id, game_id, joined, ready, red, yellow, green, blue, missed
 ) VALUES (
-	?, ?
+	?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
 RETURNING *;
 
 -- name: GetPlayerGame :one
-SELECT * FROM player_game
+SELECT * FROM player_games
 WHERE player_id = ? AND game_id = ?;
 
 -- name: UpdatePlayerGame :one
-UPDATE player_game
+UPDATE player_games
 SET ready = ?,
 red = ?,
 yellow = ?,

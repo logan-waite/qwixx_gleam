@@ -357,3 +357,52 @@ pub fn update_player_game_decoder() -> decode.Decoder(UpdatePlayerGame) {
     missed:,
   ))
 }
+
+pub type GetPlayerGamesWithGameId {
+  GetPlayerGamesWithGameId(
+    id: String,
+    player_id: String,
+    game_id: String,
+    joined: Int,
+    ready: Bool,
+    red: Int,
+    yellow: Int,
+    green: Int,
+    blue: Int,
+    missed: Int,
+  )
+}
+
+pub fn get_player_games_with_game_id(game_id game_id: String) {
+  let sql =
+    "SELECT id, player_id, game_id, joined, ready, red, yellow, green, blue, missed FROM player_games
+WHERE game_id = ?"
+  #(sql, [dev.ParamString(game_id)], get_player_games_with_game_id_decoder())
+}
+
+pub fn get_player_games_with_game_id_decoder() -> decode.Decoder(
+  GetPlayerGamesWithGameId,
+) {
+  use id <- decode.field(0, decode.string)
+  use player_id <- decode.field(1, decode.string)
+  use game_id <- decode.field(2, decode.string)
+  use joined <- decode.field(3, decode.int)
+  use ready <- decode.field(4, dev.bool_decoder())
+  use red <- decode.field(5, decode.int)
+  use yellow <- decode.field(6, decode.int)
+  use green <- decode.field(7, decode.int)
+  use blue <- decode.field(8, decode.int)
+  use missed <- decode.field(9, decode.int)
+  decode.success(GetPlayerGamesWithGameId(
+    id:,
+    player_id:,
+    game_id:,
+    joined:,
+    ready:,
+    red:,
+    yellow:,
+    green:,
+    blue:,
+    missed:,
+  ))
+}

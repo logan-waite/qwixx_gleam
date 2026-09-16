@@ -21,6 +21,7 @@ import rsvp
 import youid/uuid.{type Uuid}
 
 import client/context.{type Context, Context}
+import client/lobby_view.{type Msg as LVMsg}
 import client/local_data.{LocalData}
 import client/routes.{type Route}
 import client/start_view.{type Msg as SVMsg}
@@ -47,6 +48,7 @@ type Model {
     errors: String,
     player_game: PlayerGame,
     sv_model: start_view.Model,
+    lv_model: lobby_view.Model,
   )
 }
 
@@ -83,6 +85,7 @@ fn init(_) -> #(Model, Effect(Msg)) {
       errors: "",
       player_game:,
       sv_model: start_view.new_model(),
+      lv_model: lobby_view.new_model(),
     ),
     effect.batch(startup_effects),
   )
@@ -103,6 +106,7 @@ fn on_url_change(uri: Uri) -> Msg {
 
 type Msg {
   StartViewMsg(SVMsg)
+  LobbyViewMsg(LVMsg)
   UserRolledDice
   UserToggledScoreBox(String)
   ServerReturnedPlayer(Result(Player, rsvp.Error(String)))
@@ -120,6 +124,15 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       #(
         Model(..model, context:, sv_model:),
         sv_effect |> effect.map(StartViewMsg),
+      )
+    }
+    LobbyViewMsg(lv_msg) -> {
+      let #(context, lv_model, lv_effect) =
+        lobby_view.update(model.context, model.lv_model, lv_msg)
+
+      #(
+        Model(..model, context:, lv_model:),
+        lv_effect |> effect.map(LobbyViewMsg),
       )
     }
     UserRolledDice -> #(model, send_event(model.ws, events.RollDice))
@@ -303,13 +316,11 @@ fn view(model: Model) -> Element(Msg) {
       start_view.view(model.context, model.sv_model)
       |> element.map(StartViewMsg)
     }
-    routes.Lobby(_) -> lobby_view(model)
+    routes.Lobby(_) ->
+      { lobby_view.view(model.context, model.lv_model) }
+      |> element.map(LobbyViewMsg)
     routes.Game(_) -> game_view(model)
   }
-}
-
-fn lobby_view(model: Model) -> Element(Msg) {
-  html.div([], [html.text("Lobby for game " <> model.context.game.code <> "!")])
 }
 
 fn game_view(model: Model) -> Element(Msg) {
@@ -394,6 +405,3 @@ fn score_card(game: PlayerGame) {
     score_row("blue", game.blue),
   ])
 }
-// -----------------------------------------------
-// Utils -----------------------------------------
-// -----------------------------------------------

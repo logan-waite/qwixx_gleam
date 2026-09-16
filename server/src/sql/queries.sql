@@ -59,3 +59,7 @@ blue = ?,
 missed = ?
 WHERE id = ?
 RETURNING *;
+
+-- name: GetPlayerGamesWithGameId :many
+SELECT * FROM player_games
+WHERE game_id = ?;

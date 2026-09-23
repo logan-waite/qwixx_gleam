@@ -8,14 +8,12 @@ import gleam/http/response.{type Response as BaseResponse}
 import gleam/int
 import gleam/io
 import gleam/json
-import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
 import lustre/attribute
 import lustre/element
 import lustre/element/html
 import mist.{type Connection, type ResponseData}
-import shared/game
 import sqlight
 import wisp.{type Request, type Response}
 import wisp/wisp_mist
@@ -152,7 +150,6 @@ fn handle_api_request(db_conn, req: Request, path: List(String)) {
 
       case decode.run(json, app_player.player_decoder()) {
         Ok(player) -> {
-          // create new game
           let game = game_service.create_game(db_conn)
           let player_game =
             player_service.create_player_game(player.id, game.id, db_conn)
@@ -165,9 +162,8 @@ fn handle_api_request(db_conn, req: Request, path: List(String)) {
           wisp.bad_request(string.inspect(err))
         }
       }
-      // create player game
-      // return game
     }
+    Get, ["game", code] -> game_service.get_game_by_code(code, db_conn)
     _, _ -> wisp.not_found()
   }
 }

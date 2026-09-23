@@ -1,8 +1,9 @@
 import gleam/dynamic/decode
 import gleam/http/response
+import gleam/int
 import gleam/io
 import gleam/json
-import gleam/option.{None, Some}
+import gleam/option.{type Option, None, Some}
 import gleam/string
 import lustre/attribute as attr
 import lustre/effect.{type Effect}
@@ -24,11 +25,11 @@ import shared/player.{type Player, Player} as app_player
 // -----------------------------------------------
 
 pub type Model {
-  Model(temp_name: String)
+  Model(code: String, error: Option(String))
 }
 
 pub fn new_model() {
-  Model(temp_name: "")
+  Model(code: "", error: None)
 }
 
 // -----------------------------------------------
@@ -37,7 +38,10 @@ pub fn new_model() {
 
 pub type Msg {
   UserCreateGame
-  ServerReturnedGame(Result(Game, rsvp.Error(String)))
+  UserUpdatedGameCode(String)
+  UserAttemptedJoinGame
+  ServerCreatedGame(Result(Game, rsvp.Error(String)))
+  ServerFoundGame(Result(Game, rsvp.Error(String)))
 }
 
 pub fn update(
@@ -48,8 +52,14 @@ pub fn update(
   case msg {
     // User Actions
     UserCreateGame -> create_game(context, model)
+    UserUpdatedGameCode(code) -> #(
+      context,
+      Model(..model, code:),
+      effect.none(),
+    )
+    UserAttemptedJoinGame -> attempt_join_game(context, model)
     // Server Responses
-    ServerReturnedGame(req_result) -> {
+    ServerCreatedGame(req_result) -> {
       case req_result {
         Ok(game) -> {
           let new_context = Context(..context, game:)
@@ -58,6 +68,31 @@ pub fn update(
         Error(err) -> {
           io.println(string.inspect(err))
           #(context, model, effect.none())
+        }
+      }
+    }
+    ServerFoundGame(req_result) -> {
+      case req_result {
+        Ok(game) -> {
+          let new_context = Context(..context, game:)
+          #(new_context, model, modem.push("lobby/" <> game.code, None, None))
+        }
+        Error(err) -> {
+          case err {
+            rsvp.HttpError(response) -> {
+              let response.Response(status:, body:, headers:) = response
+              let error = case status {
+                404 ->
+                  "Game " <> model.code <> " not found. Please try another game"
+                _ -> "An unknown error occurred while looking for the game"
+              }
+              #(context, Model(..model, error: Some(error)), effect.none())
+            }
+            _ -> {
+              io.println("rsvp gave back a weird error:" <> string.inspect(err))
+              #(context, model, effect.none())
+            }
+          }
         }
       }
     }
@@ -75,8 +110,24 @@ fn create_game(
     rsvp.post(
       url,
       body,
-      rsvp.expect_json(app_game.game_decoder(), ServerReturnedGame),
+      rsvp.expect_json(app_game.game_decoder(), ServerCreatedGame),
     )
+
+  #(context, model, effect)
+}
+
+fn attempt_join_game(
+  context: Context,
+  model: Model,
+) -> #(Context, Model, Effect(Msg)) {
+  // check for game
+  // if found, and in lobby, go to game
+  // if found, and not in lobby, error
+  // if not found, error
+  let url = "/api/game/" <> model.code
+
+  let effect =
+    rsvp.get(url, rsvp.expect_json(app_game.game_decoder(), ServerFoundGame))
 
   #(context, model, effect)
 }
@@ -86,11 +137,26 @@ fn create_game(
 // -----------------------------------------------
 
 pub fn view(context: Context, model: Model) -> Element(Msg) {
+  let error_box = case model.error {
+    Some(error) -> {
+      html.div([attr.styles([#("background-color", "lightcoral")])], [
+        html.text(error),
+      ])
+    }
+    None -> html.div([], [])
+  }
   html.div([], [
+    error_box,
     html.div([], [
       html.text("Join an existing game:"),
-      html.input([attr.type_("text")]),
-      html.button([], [html.text("Join Game")]),
+      html.input([
+        attr.type_("text"),
+        event.on_input(UserUpdatedGameCode),
+        attr.value(model.code),
+      ]),
+      html.button([event.on_click(UserAttemptedJoinGame)], [
+        html.text("Join Game"),
+      ]),
     ]),
     html.div([], [
       html.text("Or start a new one:"),

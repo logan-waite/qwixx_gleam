@@ -164,6 +164,11 @@ fn handle_api_request(db_conn, req: Request, path: List(String)) {
       }
     }
     Get, ["game", code] -> game_service.get_game_by_code(code, db_conn)
+    Post, ["player-game"] -> {
+      todo
+    }
+    Get, ["game", game_code, "player", player_id] ->
+      player_service.get_player_game(player_id, game_code, db_conn)
     _, _ -> wisp.not_found()
   }
 }

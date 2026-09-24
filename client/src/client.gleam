@@ -100,6 +100,7 @@ fn on_url_change(uri: Uri) -> Msg {
     [""] -> OnRouteChange(routes.Start)
     ["lobby", code] -> OnRouteChange(routes.Lobby(code))
     ["game", code] -> OnRouteChange(routes.Game(code))
+    ["finish", code] -> OnRouteChange(routes.Finish(code))
     _ -> OnRouteChange(routes.Start)
   }
 }
@@ -320,6 +321,7 @@ fn view(model: Model) -> Element(Msg) {
       { lobby_view.view(model.context, model.lv_model) }
       |> element.map(LobbyViewMsg)
     routes.Game(_) -> game_view(model)
+    routes.Finish(_) -> finish_view(model)
   }
 }
 
@@ -329,6 +331,10 @@ fn game_view(model: Model) -> Element(Msg) {
     dice_tray(model.dice_state),
     score_card(model.player_game),
   ])
+}
+
+fn finish_view(_model: Model) -> Element(Msg) {
+  html.div([], [html.text("Finish view")])
 }
 
 // Dice Tray

@@ -248,13 +248,14 @@ pub type GetPlayerGame {
   )
 }
 
-pub fn get_player_game(player_id player_id: String, game_id game_id: String) {
+pub fn get_player_game(player_id player_id: String, code code: String) {
   let sql =
-    "SELECT id, player_id, game_id, joined, ready, red, yellow, green, blue, missed FROM player_games
-WHERE player_id = ? AND game_id = ?"
+    "SELECT player_games.id, player_games.player_id, player_games.game_id, player_games.joined, player_games.ready, player_games.red, player_games.yellow, player_games.green, player_games.blue, player_games.missed FROM player_games
+JOIN games ON games.id = player_games.game_id
+WHERE player_games.player_id = ? AND games.code = ?"
   #(
     sql,
-    [dev.ParamString(player_id), dev.ParamString(game_id)],
+    [dev.ParamString(player_id), dev.ParamString(code)],
     get_player_game_decoder(),
   )
 }

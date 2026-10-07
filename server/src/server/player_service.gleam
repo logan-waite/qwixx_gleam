@@ -1,3 +1,4 @@
+import gleam/dynamic/decode
 import gleam/io
 import gleam/json
 import gleam/list
@@ -182,6 +183,25 @@ fn add_player_game_to_player_game(add_player_game: sql.AddPlayerGame) {
   )
 }
 
+pub type CreatePlayerGameRequest {
+  CreatePlayerGameRequest(player_id: Uuid)
+}
+
+pub fn create_player_game_request_decoder() -> decode.Decoder(
+  CreatePlayerGameRequest,
+) {
+  use player_id <- decode.field("player_id", decode.string)
+
+  case uuid.from_string(player_id) {
+    Ok(id) -> decode.success(CreatePlayerGameRequest(player_id: id))
+    Error(_) ->
+      decode.failure(
+        CreatePlayerGameRequest(player_id: uuid.nil),
+        "CreatePlayerRequest",
+      )
+  }
+}
+
 pub fn create_player_game(
   player_id: Uuid,
   game_id: Uuid,
@@ -260,7 +280,6 @@ fn get_player_game_to_player_game(
       joined / 1_000_000_000,
       joined % 1_000_000_000,
     )
-  // let joined = joined |>   
 
   PlayerGame(
     id:,

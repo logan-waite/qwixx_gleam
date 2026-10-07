@@ -21,10 +21,10 @@ import rsvp
 import youid/uuid.{type Uuid}
 
 import client/context.{type Context, Context}
-import client/lobby_view.{type Msg as LVMsg}
+import client/lobby_view.{type Msg as LobbyMsg}
 import client/local_data.{LocalData}
 import client/routes.{type Route}
-import client/start_view.{type Msg as SVMsg}
+import client/start_view.{type Msg as StartMsg}
 import shared/dice.{type DiceState, DiceState, Die}
 import shared/events.{type AppEvent}
 import shared/game.{type Game, Game} as app_game
@@ -47,9 +47,14 @@ type Model {
     dice_state: DiceState,
     errors: String,
     player_game: PlayerGame,
-    sv_model: start_view.Model,
-    lv_model: lobby_view.Model,
+    start_model: start_view.Model,
+    lobby_model: lobby_view.Model,
   )
+}
+
+fn initial_route_effect(initial_route: Route) {
+  use dispatch <- effect.from()
+  dispatch(OnRouteChange(initial_route))
 }
 
 fn init(_) -> #(Model, Effect(Msg)) {
@@ -72,10 +77,11 @@ fn init(_) -> #(Model, Effect(Msg)) {
   let startup_effects = [
     ws.init("ws", WsWrapper),
     modem.init(on_url_change),
+    initial_route_effect(route),
     local_get_player_id(),
   ]
 
-  let context = Context(player:, current_route: route, game:)
+  let context = Context(player:, current_route: route, game:, player_game:)
 
   #(
     Model(
@@ -84,8 +90,8 @@ fn init(_) -> #(Model, Effect(Msg)) {
       dice_state:,
       errors: "",
       player_game:,
-      sv_model: start_view.new_model(),
-      lv_model: lobby_view.new_model(),
+      start_model: start_view.new_model(),
+      lobby_model: lobby_view.new_model(),
     ),
     effect.batch(startup_effects),
   )
@@ -105,9 +111,11 @@ fn on_url_change(uri: Uri) -> Msg {
   }
 }
 
+// get the player game from the player
+
 type Msg {
-  StartViewMsg(SVMsg)
-  LobbyViewMsg(LVMsg)
+  StartViewMsg(StartMsg)
+  LobbyViewMsg(LobbyMsg)
   UserRolledDice
   UserToggledScoreBox(String)
   ServerReturnedPlayer(Result(Player, rsvp.Error(String)))
@@ -118,22 +126,22 @@ type Msg {
 
 fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
   case msg {
-    StartViewMsg(sv_msg) -> {
-      let #(context, sv_model, sv_effect) =
-        start_view.update(model.context, model.sv_model, sv_msg)
+    StartViewMsg(start_msg) -> {
+      let #(context, start_model, start_effect) =
+        start_view.update(model.context, model.start_model, start_msg)
 
       #(
-        Model(..model, context:, sv_model:),
-        sv_effect |> effect.map(StartViewMsg),
+        Model(..model, context:, start_model:),
+        start_effect |> effect.map(StartViewMsg),
       )
     }
-    LobbyViewMsg(lv_msg) -> {
-      let #(context, lv_model, lv_effect) =
-        lobby_view.update(model.context, model.lv_model, lv_msg)
+    LobbyViewMsg(lobby_msg) -> {
+      let #(context, lobby_model, lobby_effect) =
+        lobby_view.update(model.context, model.lobby_model, lobby_msg)
 
       #(
-        Model(..model, context:, lv_model:),
-        lv_effect |> effect.map(LobbyViewMsg),
+        Model(..model, context:, lobby_model:),
+        lobby_effect |> effect.map(LobbyViewMsg),
       )
     }
     UserRolledDice -> #(model, send_event(model.ws, events.RollDice))
@@ -142,10 +150,29 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     // Websocket Messages
     WsWrapper(event) -> handle_ws_event(model, event)
     // Routes
-    OnRouteChange(route) -> #(
-      Model(..model, context: Context(..model.context, current_route: route)),
-      effect.none(),
-    )
+    OnRouteChange(route) -> {
+      case route {
+        routes.Lobby(code) -> {
+          let #(context, lobby_model, lobby_effect) =
+            lobby_view.init(model.context, model.lobby_model)
+          #(
+            Model(
+              ..model,
+              context: Context(..context, current_route: route),
+              lobby_model:,
+            ),
+            lobby_effect |> effect.map(LobbyViewMsg),
+          )
+        }
+        _ -> #(
+          Model(
+            ..model,
+            context: Context(..model.context, current_route: route),
+          ),
+          effect.none(),
+        )
+      }
+    }
     // Other
     ClientRequestPlayer(player_id) -> {
       case player_id {
@@ -314,11 +341,11 @@ fn update_player_game(model: Model, value: String) {
 fn view(model: Model) -> Element(Msg) {
   case model.context.current_route {
     routes.Start -> {
-      start_view.view(model.context, model.sv_model)
+      start_view.view(model.context, model.start_model)
       |> element.map(StartViewMsg)
     }
     routes.Lobby(_) ->
-      { lobby_view.view(model.context, model.lv_model) }
+      { lobby_view.view(model.context, model.lobby_model) }
       |> element.map(LobbyViewMsg)
     routes.Game(_) -> game_view(model)
     routes.Finish(_) -> finish_view(model)

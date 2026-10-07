@@ -164,12 +164,42 @@ fn handle_api_request(db_conn, req: Request, path: List(String)) {
       }
     }
     Get, ["game", code] -> game_service.get_game_by_code(code, db_conn)
-    Post, ["player-game"] -> {
-      todo
+    Post, ["game", game_code, "player"] -> {
+      use json <- wisp.require_json(req)
+
+      io.println("creating player game")
+      case
+        decode.run(json, player_service.create_player_game_request_decoder())
+      {
+        Ok(create_player_game_request) -> {
+          io.println(
+            "create_player_game_request: "
+            <> string.inspect(create_player_game_request),
+          )
+          let player_service.CreatePlayerGameRequest(player_id:) =
+            create_player_game_request
+          let maybe_game = game_service.get_game_by_code_db(game_code, db_conn)
+          io.println("maybe game: " <> string.inspect(maybe_game))
+          case maybe_game {
+            Some(game) -> {
+              player_service.create_player_game(player_id, game.id, db_conn)
+            }
+            None -> {
+              wisp.not_found()
+            }
+          }
+        }
+        Error(_) -> {
+          todo
+        }
+      }
     }
     Get, ["game", game_code, "player", player_id] ->
       player_service.get_player_game(player_id, game_code, db_conn)
-    _, _ -> wisp.not_found()
+    _, _ -> {
+      io.println("unknown route called")
+      wisp.not_found()
+    }
   }
 }
 

@@ -26,7 +26,6 @@ pub type LocalData {
 fn local_data_decoder() -> decode.Decoder(LocalData) {
   use player_id <- decode.field("player_id", decode.string)
   let assert Ok(uuid) = uuid.from_string(player_id)
-  io.println("saved id: " <> uuid.to_string(uuid))
   decode.success(LocalData(player_id: uuid))
 }
 

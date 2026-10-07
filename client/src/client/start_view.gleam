@@ -124,10 +124,6 @@ pub fn update(
       }
     }
     ServerCheckedPlayerInGame(req_result) -> {
-      io.println(
-        "ServerCheckedPLayerInGame game status: "
-        <> context.game |> string.inspect(),
-      )
       case req_result {
         Ok(_) -> {
           // If player is in the game and it's active, just go straight there.

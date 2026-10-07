@@ -36,26 +36,29 @@ pub fn create_game(db_conn: sqlight.Connection) -> Game {
   }
 }
 
-pub fn get_game_by_code(code: String, db_conn: sqlight.Connection) {
+pub fn get_game_by_code_db(code: String, db_conn: sqlight.Connection) {
   let sql = sql.get_game_with_code(code)
   case parrot.run_query(sql, db_conn) {
     Ok(row) -> {
-      let maybe_game =
-        row
-        |> list.map(get_game_by_code_to_game)
-        |> utils.unwrap_list()
-      case maybe_game {
-        Some(game) -> {
-          let return_body = app_game.game_to_json(game) |> json.to_string()
-          wisp.ok()
-          |> wisp.json_body(return_body)
-        }
-        None -> wisp.not_found()
-      }
+      row
+      |> list.map(get_game_by_code_to_game)
+      |> utils.unwrap_list()
     }
     Error(err) -> {
       todo
     }
+  }
+}
+
+pub fn get_game_by_code(code: String, db_conn: sqlight.Connection) {
+  let maybe_game = get_game_by_code_db(code, db_conn)
+  case maybe_game {
+    Some(game) -> {
+      let return_body = app_game.game_to_json(game) |> json.to_string()
+      wisp.ok()
+      |> wisp.json_body(return_body)
+    }
+    None -> wisp.not_found()
   }
 }
 

@@ -1,4 +1,6 @@
+import gleam/http/response
 import gleam/io
+import gleam/json
 import gleam/option.{type Option, None, Some}
 import gleam/string
 import lustre/attribute as attr
@@ -7,9 +9,12 @@ import lustre/element.{type Element}
 import lustre/element/html
 import lustre/event
 import rsvp
+import youid/uuid.{type Uuid}
 
 import client/context.{type Context, Context}
-import shared/player.{type Player, Player} as app_player
+import client/routes.{Lobby}
+import shared/game.{type Game} as app_game
+import shared/player.{type Player, type PlayerGame, Player} as app_player
 
 // -----------------------------------------------
 // Model -----------------------------------------
@@ -22,6 +27,23 @@ pub fn new_model() {
   Model(temp_name: "")
 }
 
+pub fn init(context: Context, model: Model) -> #(Context, Model, Effect(Msg)) {
+  // need to load game, in case we don't have it already.
+  // also need to get the player game if available, else create one.
+  // chain will be load game -> get player game -> (?) create player game
+
+  let game_code = case context.current_route {
+    Lobby(code) -> code
+    _ -> panic as "on lobby page without being on lobby route"
+  }
+  let effect =
+    rsvp.get(
+      "/api/game/" <> game_code,
+      rsvp.expect_json(app_game.game_decoder(), ServerReturnedGame),
+    )
+  #(context, model, effect)
+}
+
 // -----------------------------------------------
 // Update ----------------------------------------
 // -----------------------------------------------
@@ -29,6 +51,9 @@ pub type Msg {
   UserSavedName
   UserUpdatedName(String)
   ServerReturnedPlayer(Result(Player, rsvp.Error(String)))
+  ServerReturnedGame(Result(Game, rsvp.Error(String)))
+  ServerReturnedPlayerGame(Result(PlayerGame, rsvp.Error(String)))
+  ServerCreatedPlayerGame(Result(PlayerGame, rsvp.Error(String)))
 }
 
 pub fn update(
@@ -54,7 +79,88 @@ pub fn update(
         }
       }
     }
+    ServerReturnedGame(req_result) -> {
+      // now get the player game with the new game id
+      case req_result {
+        Ok(game) -> {
+          let new_context = Context(..context, game:)
+          let effect = get_player_game(context.player.id, game.code)
+          #(new_context, model, effect)
+        }
+        Error(err) -> {
+          io.println("no player_game: " <> string.inspect(err))
+          #(context, model, effect.none())
+        }
+      }
+    }
+    ServerReturnedPlayerGame(req_result) -> {
+      case req_result {
+        Ok(player_game) -> {
+          let new_context = Context(..context, player_game:)
+          #(new_context, model, effect.none())
+        }
+        Error(err) -> {
+          io.println("need to create a player game")
+          case err {
+            rsvp.HttpError(response) -> {
+              let response.Response(status, _body, _headers) = response
+              let err = case status {
+                404 -> {
+                  let effect =
+                    create_player_game(context.player.id, context.game.code)
+                  #(context, model, effect)
+                }
+                _ -> {
+                  io.println(
+                    "An unknown error occurred while trying to create a game",
+                  )
+                  todo
+                }
+              }
+            }
+            _ -> {
+              io.println(
+                "rsvp gave back a weird error: " <> string.inspect(err),
+              )
+              #(context, model, effect.none())
+            }
+          }
+        }
+      }
+    }
+    ServerCreatedPlayerGame(req_result) -> {
+      case req_result {
+        Ok(player_game) -> {
+          let new_context = Context(..context, player_game:)
+          #(new_context, model, effect.none())
+        }
+        Error(_err) -> {
+          io.println("error creating game")
+          #(context, model, effect.none())
+        }
+      }
+    }
   }
+}
+
+fn get_player_game(player_id: Uuid, game_code: String) {
+  let url =
+    "/api/game/" <> game_code <> "/player/" <> player_id |> uuid.to_string()
+  rsvp.get(
+    url,
+    rsvp.expect_json(app_player.player_game_decoder(), ServerReturnedPlayerGame),
+  )
+}
+
+fn create_player_game(player_id: Uuid, game_code: String) {
+  let url = "/api/game/" <> game_code <> "/player/"
+  let body =
+    json.object([#("player_id", json.string(player_id |> uuid.to_string()))])
+  rsvp.post(
+    url,
+    body,
+    rsvp.expect_json(app_player.player_game_decoder(), ServerCreatedPlayerGame),
+  )
 }
 
 fn update_player_name(
@@ -107,6 +213,9 @@ pub fn view(context: Context, model: Model) -> Element(Msg) {
           [html.text("Save")],
         ),
       ]),
+    ]),
+    html.div([], [
+      html.span([attr.style("font-weight", "bold")], [html.text("Players")]),
     ]),
   ])
 }

@@ -11,8 +11,8 @@ import lustre/event
 import rsvp
 import youid/uuid.{type Uuid}
 
-import client/context.{type Context, Context}
-import client/routes.{Lobby}
+import client/shared.{type Context, Context, Lobby}
+import shared/events as app_events
 import shared/game.{type Game} as app_game
 import shared/player.{type Player, type PlayerGame, Player} as app_player
 
@@ -54,6 +54,7 @@ pub type Msg {
   ServerReturnedGame(Result(Game, rsvp.Error(String)))
   ServerReturnedPlayerGame(Result(PlayerGame, rsvp.Error(String)))
   ServerCreatedPlayerGame(Result(PlayerGame, rsvp.Error(String)))
+  WsEffect(app_events.AppEvent)
 }
 
 pub fn update(
@@ -140,6 +141,9 @@ pub fn update(
         }
       }
     }
+    WsEffect(app_event) -> {
+      #(context, model, shared.send_event(context.ws, app_event))
+    }
   }
 }
 
@@ -215,7 +219,9 @@ pub fn view(context: Context, model: Model) -> Element(Msg) {
       ]),
     ]),
     html.div([], [
-      html.span([attr.style("font-weight", "bold")], [html.text("Players")]),
+      html.div([], [
+        html.span([attr.style("font-weight", "bold")], [html.text("Players")]),
+      ]),
     ]),
   ])
 }

@@ -15,6 +15,7 @@ import shared/player.{type Player, type PlayerGame}
 // }
 
 pub type AppEvent {
+  UpdatePlayerList(List(PlayerGame))
   RollDice
   UpdatedDiceState(DiceState)
   PlayerUpdatedPlayerGame(PlayerGame)
@@ -25,40 +26,13 @@ pub type AppEvent {
   NoOp
 }
 
-pub fn parse_event(msg: String) -> AppEvent {
-  // io.println("parse_event: " <> msg)
-  case json.parse(msg, event_decoder()) {
-    Ok(event) -> event
-    Error(err) -> {
-      case err {
-        json.UnexpectedEndOfInput -> io.println("unexpected end of input")
-        json.UnexpectedByte(str) -> io.println("unexpected byte: " <> str)
-        json.UnexpectedSequence(str) ->
-          io.println("unexpected sequence: " <> str)
-        json.UnableToDecode(decode_errors) -> {
-          io.println("errors when decoding:")
-          list.map(decode_errors, fn(error) {
-            let decode.DecodeError(expected:, found:, path:) = error
-            io.println(
-              "expected: `"
-              <> expected
-              <> "` at `"
-              <> string.join(path, ".")
-              <> "`, found`"
-              <> found
-              <> "`",
-            )
-          })
-          Nil
-        }
-      }
-      NoOp
-    }
-  }
-}
-
 pub fn event_to_json(event: AppEvent) -> json.Json {
   case event {
+    UpdatePlayerList(player_games) ->
+      to_event(
+        "update-player_list",
+        Some(json.array(player_games, player.player_game_to_json)),
+      )
     RollDice -> to_event("roll-dice", None)
     UpdatedDiceState(dice_state) ->
       to_event("updated-dice-state", Some(dice.dice_state_to_json(dice_state)))
@@ -80,6 +54,14 @@ pub fn event_decoder() -> decode.Decoder(AppEvent) {
   use event <- decode.field("event", decode.string)
 
   case event {
+    "update-player-list" -> {
+      use player_games <- decode.field(
+        "data",
+        decode.list(player.player_game_decoder()),
+      )
+
+      decode.success(UpdatePlayerList(player_games))
+    }
     "roll-dice" -> decode.success(RollDice)
     "updated-dice-state" -> {
       use dice_state <- decode.field("data", dice.dice_state_decoder())
@@ -113,4 +95,36 @@ fn to_event(name: String, json_data: Option(json.Json)) -> json.Json {
 
 pub fn event_to_text(event: AppEvent) -> String {
   event_to_json(event) |> json.to_string
+}
+
+pub fn parse_event(msg: String) -> AppEvent {
+  // io.println("parse_event: " <> msg)
+  case json.parse(msg, event_decoder()) {
+    Ok(event) -> event
+    Error(err) -> {
+      case err {
+        json.UnexpectedEndOfInput -> io.println("unexpected end of input")
+        json.UnexpectedByte(str) -> io.println("unexpected byte: " <> str)
+        json.UnexpectedSequence(str) ->
+          io.println("unexpected sequence: " <> str)
+        json.UnableToDecode(decode_errors) -> {
+          io.println("errors when decoding:")
+          list.map(decode_errors, fn(error) {
+            let decode.DecodeError(expected:, found:, path:) = error
+            io.println(
+              "expected: `"
+              <> expected
+              <> "` at `"
+              <> string.join(path, ".")
+              <> "`, found`"
+              <> found
+              <> "`",
+            )
+          })
+          Nil
+        }
+      }
+      NoOp
+    }
+  }
 }

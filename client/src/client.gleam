@@ -20,10 +20,12 @@ import modem
 import rsvp
 import youid/uuid.{type Uuid}
 
-import client/context.{type Context, Context}
 import client/lobby_view.{type Msg as LobbyMsg}
 import client/local_data.{LocalData}
-import client/routes.{type Route}
+import client/shared.{
+  type Context, type Route, Context, Finish as RouteFinish, Game as RouteGame,
+  Lobby as RouteLobby, Start as RouteStart,
+}
 import client/start_view.{type Msg as StartMsg}
 import shared/dice.{type DiceState, DiceState, Die}
 import shared/events.{type AppEvent}
@@ -42,7 +44,6 @@ pub fn main() -> Nil {
 // -----------------------------------------------
 type Model {
   Model(
-    ws: Option(ws.WebSocket),
     context: Context,
     dice_state: DiceState,
     errors: String,
@@ -63,10 +64,10 @@ fn init(_) -> #(Model, Effect(Msg)) {
     |> result.map(fn(initial_uri) { uri.path_segments(initial_uri.path) })
     |> fn(path) {
       case path {
-        Ok([""]) -> routes.Start
-        Ok(["lobby", code]) -> routes.Lobby(code)
-        Ok(["game", code]) -> routes.Game(code)
-        _ -> routes.Start
+        Ok([""]) -> RouteStart
+        Ok(["lobby", code]) -> RouteLobby(code)
+        Ok(["game", code]) -> RouteGame(code)
+        _ -> RouteStart
       }
     }
   let dice_state = dice.new_dice_state()
@@ -75,17 +76,17 @@ fn init(_) -> #(Model, Effect(Msg)) {
   let player_game = app_player.new_player_game(player.id, game.id)
 
   let startup_effects = [
-    ws.init("ws", WsWrapper),
+    ws.init("/ws", WsWrapper),
     modem.init(on_url_change),
     initial_route_effect(route),
     local_get_player_id(),
   ]
 
-  let context = Context(player:, current_route: route, game:, player_game:)
+  let context =
+    Context(ws: None, player:, current_route: route, game:, player_game:)
 
   #(
     Model(
-      ws: None,
       context:,
       dice_state:,
       errors: "",
@@ -103,11 +104,11 @@ fn init(_) -> #(Model, Effect(Msg)) {
 
 fn on_url_change(uri: Uri) -> Msg {
   case uri.path_segments(uri.path) {
-    [""] -> OnRouteChange(routes.Start)
-    ["lobby", code] -> OnRouteChange(routes.Lobby(code))
-    ["game", code] -> OnRouteChange(routes.Game(code))
-    ["finish", code] -> OnRouteChange(routes.Finish(code))
-    _ -> OnRouteChange(routes.Start)
+    [""] -> OnRouteChange(RouteStart)
+    ["lobby", code] -> OnRouteChange(RouteLobby(code))
+    ["game", code] -> OnRouteChange(RouteGame(code))
+    ["finish", code] -> OnRouteChange(RouteFinish(code))
+    _ -> OnRouteChange(RouteStart)
   }
 }
 
@@ -144,7 +145,10 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
         lobby_effect |> effect.map(LobbyViewMsg),
       )
     }
-    UserRolledDice -> #(model, send_event(model.ws, events.RollDice))
+    UserRolledDice -> #(
+      model,
+      shared.send_event(model.context.ws, events.RollDice),
+    )
     UserToggledScoreBox(value) -> update_player_game(model, value)
     // Server Messages
     // Websocket Messages
@@ -152,7 +156,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     // Routes
     OnRouteChange(route) -> {
       case route {
-        routes.Lobby(code) -> {
+        RouteLobby(_code) -> {
           let #(context, lobby_model, lobby_effect) =
             lobby_view.init(model.context, model.lobby_model)
           #(
@@ -232,8 +236,11 @@ fn handle_ws_event(model: Model, ws_event: ws.WebSocketEvent) {
   case ws_event {
     ws.InvalidUrl -> panic
     ws.OnOpen(socket) -> #(
-      Model(..model, ws: Some(socket)),
-      send_event(Some(socket), events.ClientConnected(model.context.player)),
+      Model(..model, context: Context(..model.context, ws: Some(socket))),
+      shared.send_event(
+        Some(socket),
+        events.ClientConnected(model.context.player),
+      ),
     )
     ws.OnTextMessage(msg) -> {
       events.parse_event(msg)
@@ -257,16 +264,6 @@ fn handle_app_event(event: AppEvent, model: Model) -> #(Model, Effect(Msg)) {
     _ -> {
       io.println("unhandled event: " <> string.inspect(event))
       #(model, effect.none())
-    }
-  }
-}
-
-fn send_event(socket, event) {
-  case socket {
-    Some(s) -> ws.send(s, events.event_to_text(event))
-    None -> {
-      io.println("Socket not initiated")
-      effect.none()
     }
   }
 }
@@ -330,7 +327,10 @@ fn update_player_game(model: Model, value: String) {
   )
   #(
     Model(..model, player_game:),
-    send_event(model.ws, events.PlayerUpdatedPlayerGame(player_game)),
+    shared.send_event(
+      model.context.ws,
+      events.PlayerUpdatedPlayerGame(player_game),
+    ),
   )
 }
 
@@ -340,15 +340,16 @@ fn update_player_game(model: Model, value: String) {
 
 fn view(model: Model) -> Element(Msg) {
   case model.context.current_route {
-    routes.Start -> {
+    RouteStart -> {
       start_view.view(model.context, model.start_model)
       |> element.map(StartViewMsg)
     }
-    routes.Lobby(_) ->
-      { lobby_view.view(model.context, model.lobby_model) }
+    RouteLobby(_) -> {
+      lobby_view.view(model.context, model.lobby_model)
       |> element.map(LobbyViewMsg)
-    routes.Game(_) -> game_view(model)
-    routes.Finish(_) -> finish_view(model)
+    }
+    RouteGame(_) -> game_view(model)
+    RouteFinish(_) -> finish_view(model)
   }
 }
 

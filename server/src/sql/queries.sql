@@ -61,7 +61,8 @@ missed = ?
 WHERE id = ?
 RETURNING *;
 
--- name: GetPlayerGamesWithGameId :many
-SELECT * FROM player_games
-WHERE game_id = ?;
+-- name: GetPlayerGamesWithGameCode :many
+SELECT player_games.* FROM player_games
+JOIN games on player_games.game_id = games.id
+WHERE code = ?;
 

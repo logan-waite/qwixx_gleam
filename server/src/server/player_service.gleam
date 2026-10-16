@@ -323,3 +323,58 @@ pub fn get_player_game(
     }
   }
 }
+
+pub fn get_game_players(game_code: String, db_conn) -> List(PlayerGame) {
+  let sql_result = sql.get_player_games_with_game_code(game_code)
+  case parrot.run_query(sql_result, db_conn) {
+    Ok(rows) -> {
+      rows |> list.map(get_player_game_with_game_code_to_player_game)
+    }
+    Error(err) -> {
+      io.println(string.inspect(err))
+      todo
+    }
+  }
+}
+
+fn get_player_game_with_game_code_to_player_game(
+  get_player_game: sql.GetPlayerGamesWithGameCode,
+) {
+  let sql.GetPlayerGamesWithGameCode(
+    id:,
+    player_id:,
+    game_id:,
+    joined:,
+    ready:,
+    red:,
+    yellow:,
+    green:,
+    blue:,
+    missed:,
+  ) = get_player_game
+
+  let id = id |> uuid.from_string() |> result.unwrap(uuid.nil)
+  let player_id = player_id |> uuid.from_string() |> result.unwrap(uuid.nil)
+  let game_id =
+    game_id
+    |> uuid.from_string()
+    |> result.unwrap(uuid.nil)
+  let joined =
+    timestamp.from_unix_seconds_and_nanoseconds(
+      joined / 1_000_000_000,
+      joined % 1_000_000_000,
+    )
+
+  PlayerGame(
+    id:,
+    player_id:,
+    game_id:,
+    joined:,
+    ready:,
+    red:,
+    yellow:,
+    green:,
+    blue:,
+    missed:,
+  )
+}

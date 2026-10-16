@@ -1,8 +1,5 @@
-import gleam/dynamic/decode
 import gleam/http/response
-import gleam/int
 import gleam/io
-import gleam/json
 import gleam/option.{type Option, None, Some}
 import gleam/string
 import lustre/attribute as attr
@@ -12,13 +9,11 @@ import lustre/element/html
 import lustre/event
 import modem
 import rsvp
-import youid/uuid.{type Uuid}
+import youid/uuid
 
-import client/context.{type Context, Context}
-import client/local_data.{LocalData}
-import client/routes.{type Route}
+import client/shared.{type Context, Context}
 import shared/game.{type Game} as app_game
-import shared/player.{type Player, type PlayerGame, Player, PlayerGame} as app_player
+import shared/player.{type PlayerGame} as app_player
 
 // -----------------------------------------------
 // Model -----------------------------------------

@@ -1,7 +1,9 @@
 import gleam/dynamic/decode
 import gleam/int
+import gleam/io
 import gleam/json
 import gleam/option.{type Option, None, Some}
+import gleam/string
 import gleam/time/timestamp.{type Timestamp}
 import youid/uuid.{type Uuid}
 
@@ -42,6 +44,9 @@ pub fn unwrap_list(list: List(a)) -> Option(a) {
   case list {
     [] -> None
     [item] -> Some(item)
-    _ -> panic as "Can't turn a list with multiple elements into an Option"
+    _ -> {
+      io.println(string.inspect(list))
+      panic as "Can't turn a list with multiple elements into an Option"
+    }
   }
 }

@@ -87,6 +87,7 @@ pub fn get_player(id: String, db_conn: sqlight.Connection) {
         None -> {
           // No row returned
           wisp.internal_server_error()
+          |> wisp.json_body("No db row returned")
         }
       }
     }

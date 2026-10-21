@@ -14,10 +14,7 @@ fn parrot_to_sqlight(param: dev.Param) -> sqlight.Value {
     dev.ParamBitArray(x) -> sqlight.blob(x)
     dev.ParamNullable(x) -> sqlight.nullable(fn(a) { parrot_to_sqlight(a) }, x)
     dev.ParamList(_) -> panic as "sqlite does not implement lists"
-    dev.ParamBool(x) -> {
-      io.println(x |> bool.to_string())
-      sqlight.bool(x)
-    }
+    dev.ParamBool(x) -> sqlight.bool(x)
     // dev.ParamBool(_) -> panic as "sqlite does not support booleans"
     dev.ParamDate(_) -> panic as "sqlite does not support dates"
     dev.ParamTimestamp(_) -> panic as "sqlite does not support timestamps"

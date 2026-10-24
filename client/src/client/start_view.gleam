@@ -11,7 +11,7 @@ import modem
 import rsvp
 import youid/uuid
 
-import client/shared.{type Context, Context}
+import client/shared.{type Context, Context, Lobby as RouteLobby}
 import shared/game.{type Game} as app_game
 import shared/player.{type PlayerGame} as app_player
 
@@ -58,7 +58,8 @@ pub fn update(
     ServerCreatedGame(req_result) -> {
       case req_result {
         Ok(game) -> {
-          let new_context = Context(..context, game:)
+          let new_context =
+            Context(..context, game:, current_route: RouteLobby(game.code))
           #(new_context, model, modem.push("lobby/" <> game.code, None, None))
         }
         Error(err) -> {

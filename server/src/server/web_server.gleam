@@ -1,19 +1,19 @@
 import dot_env
 import dot_env/env
 import gleam/dynamic/decode
+import gleam/erlang/process.{type Subject}
 import gleam/http.{Get, Post, Put}
 import gleam/http/request.{type Request as BaseRequest}
 import gleam/http/response.{type Response as BaseResponse}
 import gleam/int
 import gleam/io
 import gleam/json
-import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
 import lustre/attribute
 import lustre/element
 import lustre/element/html
-import mist.{type Connection, type ResponseData, type WebsocketConnection}
+import mist.{type Connection, type ResponseData}
 import sqlight
 import wisp.{type Request, type Response}
 import wisp/wisp_mist
@@ -21,12 +21,14 @@ import youid/uuid
 
 import server/game_service
 import server/player_service
+import server/room
+import server/room_manager
 import shared/dice.{type DiceState, DiceState, Die}
 import shared/events.{type AppEvent}
 import shared/game as app_game
 import shared/player.{type Player, type PlayerGame} as app_player
 
-pub fn supervised() {
+pub fn supervised(room_manager_name: process.Name(room_manager.Message)) {
   wisp.configure_logger()
 
   dot_env.new()
@@ -47,9 +49,10 @@ pub fn supervised() {
   }
 
   // initial websocket state (will come from db eventually)
-  let player = app_player.new_player()
-  let player_game = app_player.new_player_game(player.id, uuid.v4())
-  let ws_state = WebSocketState(db_conn:, player:, player_game:)
+  // let player = app_player.new_player()
+  // let player_game = app_player.new_player_game(player.id, uuid.v4())
+  let manager = process.named_subject(room_manager_name)
+  let ws_state = WebSocketState(db_conn, None, manager)
 
   let assert Ok(priv_directory) = wisp.priv_directory("server")
   let static_directory = priv_directory <> "/static"
@@ -59,13 +62,21 @@ pub fn supervised() {
       ["ws"] ->
         mist.websocket(
           request: req,
-          on_init: fn(conn) {
-            let _ =
-              mist.send_text_frame(
-                conn,
-                events.event_to_text(events.ServerConnected),
-              )
-            #(ws_state, None)
+          on_init: fn(_conn) {
+            let outgoing = process.new_subject()
+            let selector = process.new_selector() |> process.select(outgoing)
+
+            let ws_state = WebSocketState(..ws_state, subject: Some(outgoing))
+            // let _ =
+            //   mist.send_text_frame(
+            //     conn,
+            //     events.event_to_text(events.ServerConnected),
+            //   )
+            io.println(
+              "on_init return value: "
+              <> string.inspect(#(ws_state, Some(selector))),
+            )
+            #(ws_state, Some(selector))
           },
           on_close: fn(_state) { io.println("closing ws connection") },
           handler: handle_ws_request,
@@ -153,7 +164,7 @@ fn handle_api_request(db_conn, req: Request, path: List(String)) {
       case decode.run(json, app_player.player_decoder()) {
         Ok(player) -> {
           let game = game_service.create_game(db_conn)
-          let player_game =
+          let _player_game =
             player_service.create_player_game(player.id, game.id, db_conn)
           let body = app_game.game_to_json(game) |> json.to_string()
 
@@ -208,13 +219,17 @@ fn handle_api_request(db_conn, req: Request, path: List(String)) {
 type WebSocketState {
   WebSocketState(
     db_conn: sqlight.Connection,
-    player: Player,
-    player_game: PlayerGame,
+    subject: Option(Subject(room.Message)),
+    room_manager: Subject(room_manager.Message),
   )
 }
 
 // websockets
-fn handle_ws_request(state, message: mist.WebsocketMessage(a), conn) {
+fn handle_ws_request(
+  state,
+  message: mist.WebsocketMessage(room.Message),
+  conn,
+) {
   case message {
     mist.Text(msg) -> {
       let event = events.parse_event(msg)
@@ -228,10 +243,18 @@ fn handle_ws_request(state, message: mist.WebsocketMessage(a), conn) {
         None -> mist.continue(new_state)
       }
     }
-    mist.Custom(_msg) -> {
-      // io.println("Received custom msg: " <> msg)
-      io.println("Received custom msg: ")
-      mist.continue(state)
+    mist.Custom(msg) -> {
+      io.println("Received custom msg: " <> string.inspect(msg))
+      case msg {
+        room.Broadcast(event) -> {
+          let _ = events.event_to_text(event) |> mist.send_text_frame(conn, _)
+          mist.continue(state)
+        }
+        _ -> {
+          io.println("haven't implemented this room message yet")
+          mist.continue(state)
+        }
+      }
     }
     mist.Binary(_bit_array) -> {
       io.println("Whatchu doin'?")
@@ -243,9 +266,33 @@ fn handle_ws_request(state, message: mist.WebsocketMessage(a), conn) {
 
 fn handle_app_event(
   event: AppEvent,
-  state,
+  state: WebSocketState,
 ) -> #(Option(AppEvent), WebSocketState) {
   case event {
+    events.JoinGame(game, player) -> {
+      io.println("received JoinGame event")
+      io.println("code: " <> game.code)
+      io.println("player: " <> string.inspect(player))
+      // now we join the game room using the subject in the state
+
+      let subject = case state.subject {
+        Some(sub) -> sub
+        None -> panic as "We need a subject from on_init to send messages to!"
+      }
+      io.println("subject: " <> string.inspect(subject))
+
+      case room_manager.get_or_start_room(state.room_manager, game) {
+        Ok(room_subject) -> {
+          io.println("got room subject: " <> string.inspect(room_subject))
+          process.send(room_subject, room.Join(player, subject))
+        }
+        Error(Nil) -> {
+          io.println("got an error from getting room")
+        }
+      }
+      // process.send(subject, .Join(player, subject))
+      #(None, state)
+    }
     events.RollDice -> #(
       Some(
         roll_dice()
@@ -255,7 +302,7 @@ fn handle_app_event(
     )
     events.PlayerUpdatedPlayerGame(updated_player_game) -> #(
       Some(events.NoOp),
-      WebSocketState(..state, player_game: updated_player_game),
+      state,
     )
     _ -> #(None, state)
   }

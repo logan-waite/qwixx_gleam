@@ -5,6 +5,9 @@ import youid/uuid.{type Uuid}
 import shared/dice
 import shared/utils
 
+pub type GameCode =
+  String
+
 // Game
 pub type GameStatus {
   Lobby

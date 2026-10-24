@@ -1,6 +1,7 @@
 import gleam/http/response
 import gleam/io
 import gleam/json
+import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
 import lustre/attribute as attr
@@ -20,11 +21,11 @@ import shared/player.{type Player, type PlayerGame, Player} as app_player
 // Model -----------------------------------------
 // -----------------------------------------------
 pub type Model {
-  Model(temp_name: String)
+  Model(temp_name: String, players: List(Player))
 }
 
 pub fn new_model() {
-  Model(temp_name: "")
+  Model(temp_name: "", players: [])
 }
 
 pub fn init(context: Context, model: Model) -> #(Context, Model, Effect(Msg)) {
@@ -84,9 +85,22 @@ pub fn update(
       // now get the player game with the new game id
       case req_result {
         Ok(game) -> {
+          io.println("game: " <> string.inspect(game))
           let new_context = Context(..context, game:)
-          let effect = get_player_game(context.player.id, game.code)
-          #(new_context, model, effect)
+          io.println("player: " <> string.inspect(context.player))
+          let get_player_game_effect =
+            get_player_game(context.player.id, game.code)
+          let join_game_effect =
+            shared.send_event(
+              context.ws,
+              app_events.JoinGame(game, context.player),
+            )
+          // join game room with game code
+          #(
+            new_context,
+            model,
+            effect.batch([get_player_game_effect, join_game_effect]),
+          )
         }
         Error(err) -> {
           io.println("no player_game: " <> string.inspect(err))
@@ -188,6 +202,25 @@ fn update_player_name(
   #(Context(..context, player: player), new_model, effect)
 }
 
+// websocket messages ---------------------------
+pub fn handle_app_event(
+  context: Context,
+  model: Model,
+  event: app_events.AppEvent,
+) {
+  case event {
+    app_events.UpdatePlayerList(players) -> {
+      io.println("updated player list")
+      let new_model = Model(..model, players:)
+      #(context, new_model, effect.none())
+    }
+    _ -> {
+      io.println("not handling this")
+      #(context, model, effect.none())
+    }
+  }
+}
+
 // -----------------------------------------------
 // View ------------------------------------------
 // -----------------------------------------------
@@ -221,6 +254,12 @@ pub fn view(context: Context, model: Model) -> Element(Msg) {
     html.div([], [
       html.div([], [
         html.span([attr.style("font-weight", "bold")], [html.text("Players")]),
+        html.div(
+          [],
+          list.map(model.players, fn(player) {
+            html.text(option.unwrap(player.name, "guest"))
+          }),
+        ),
       ]),
     ]),
   ])

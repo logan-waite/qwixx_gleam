@@ -155,26 +155,17 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     WsWrapper(event) -> handle_ws_event(model, event)
     // Routes
     OnRouteChange(route) -> {
+      let context = Context(..model.context, current_route: route)
       case route {
         RouteLobby(_code) -> {
           let #(context, lobby_model, lobby_effect) =
-            lobby_view.init(model.context, model.lobby_model)
+            lobby_view.init(context, model.lobby_model)
           #(
-            Model(
-              ..model,
-              context: Context(..context, current_route: route),
-              lobby_model:,
-            ),
+            Model(..model, context:, lobby_model:),
             lobby_effect |> effect.map(LobbyViewMsg),
           )
         }
-        _ -> #(
-          Model(
-            ..model,
-            context: Context(..model.context, current_route: route),
-          ),
-          effect.none(),
-        )
+        _ -> #(Model(..model, context:), effect.none())
       }
     }
     // Other
@@ -237,13 +228,14 @@ fn handle_ws_event(model: Model, ws_event: ws.WebSocketEvent) {
     ws.InvalidUrl -> panic
     ws.OnOpen(socket) -> #(
       Model(..model, context: Context(..model.context, ws: Some(socket))),
-      shared.send_event(
-        Some(socket),
-        events.ClientConnected(model.context.player),
-      ),
+      effect.none(),
+      // shared.send_event(
+    //   Some(socket),
+    //   events.ClientConnected(model.context.player),
+    // ),
     )
-    ws.OnTextMessage(msg) -> {
-      events.parse_event(msg)
+    ws.OnTextMessage(message) -> {
+      events.parse_event(message)
       |> handle_app_event(model)
     }
     ws.OnBinaryMessage(_msg) -> #(model, effect.none())
@@ -252,21 +244,45 @@ fn handle_ws_event(model: Model, ws_event: ws.WebSocketEvent) {
 }
 
 fn handle_app_event(event: AppEvent, model: Model) -> #(Model, Effect(Msg)) {
-  case event {
-    events.UpdatedDiceState(dice_state) -> #(
-      Model(..model, dice_state:),
-      effect.none(),
-    )
-    events.ServerFoundPlayer(player) -> {
-      io.println("server found player: " <> string.inspect(player))
-      #(model, effect.none())
+  case model.context.current_route {
+    RouteLobby(_code) -> {
+      let #(context, lobby_model, lobby_effect) =
+        lobby_view.handle_app_event(model.context, model.lobby_model, event)
+
+      #(
+        Model(..model, context:, lobby_model:),
+        lobby_effect |> effect.map(LobbyViewMsg),
+      )
     }
     _ -> {
-      io.println("unhandled event: " <> string.inspect(event))
+      io.println(
+        string.inspect(model.context.current_route)
+        <> " isn't expecting a ws message.",
+      )
       #(model, effect.none())
     }
   }
 }
+
+//   case event {
+//     events.UpdatedDiceState(dice_state) -> #(
+//       Model(..model, dice_state:),
+//       effect.none(),
+//     )
+//     events.ServerFoundPlayer(player) -> {
+//       io.println("server found player: " <> string.inspect(player))
+//       #(model, effect.none())
+//     }
+//     events.UpdatePlayerList(players) -> {
+//       io.println("updataded player list with: " <> string.inspect(players))
+//       #(model, effect.none())
+//     }
+//     _ -> {
+//       io.println("unhandled event: " <> string.inspect(event))
+//       #(model, effect.none())
+//     }
+//   }
+// }
 
 fn local_get_player_id() -> Effect(Msg) {
   use dispatch <- effect.from

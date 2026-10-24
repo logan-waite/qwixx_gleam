@@ -4,7 +4,9 @@ import gleam/json
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
+
 import shared/dice.{type DiceState}
+import shared/game.{type Game}
 import shared/player.{type Player, type PlayerGame}
 
 // {
@@ -15,7 +17,9 @@ import shared/player.{type Player, type PlayerGame}
 // }
 
 pub type AppEvent {
-  UpdatePlayerList(List(PlayerGame))
+  JoinGame(Game, Player)
+  UpdatePlayerList(List(Player))
+  // Legacy
   RollDice
   UpdatedDiceState(DiceState)
   PlayerUpdatedPlayerGame(PlayerGame)
@@ -28,10 +32,22 @@ pub type AppEvent {
 
 pub fn event_to_json(event: AppEvent) -> json.Json {
   case event {
+    JoinGame(game, player) -> {
+      to_event(
+        "join-game",
+        Some(
+          json.object([
+            #("game", game.game_to_json(game)),
+            #("player", player.player_to_json(player)),
+          ]),
+        ),
+      )
+    }
     UpdatePlayerList(player_games) ->
       to_event(
-        "update-player_list",
-        Some(json.array(player_games, player.player_game_to_json)),
+        "update-player-list",
+        Some(json.array(player_games, player.player_to_json)),
+        // Some(json.array(player_games, player.player_game_to_json)),
       )
     RollDice -> to_event("roll-dice", None)
     UpdatedDiceState(dice_state) ->
@@ -54,13 +70,23 @@ pub fn event_decoder() -> decode.Decoder(AppEvent) {
   use event <- decode.field("event", decode.string)
 
   case event {
-    "update-player-list" -> {
-      use player_games <- decode.field(
-        "data",
-        decode.list(player.player_game_decoder()),
-      )
+    "join-game" -> {
+      use game <- decode.subfield(["data", "game"], game.game_decoder())
+      use player <- decode.subfield(["data", "player"], player.player_decoder())
 
-      decode.success(UpdatePlayerList(player_games))
+      decode.success(JoinGame(game, player))
+    }
+    // Legacy
+    "update-player-list" -> {
+      use players <- decode.field("data", decode.list(player.player_decoder()))
+
+      decode.success(UpdatePlayerList(players))
+      //   use player_games <- decode.field(
+      //     "data",
+      //     decode.list(player.player_game_decoder()),
+      //   )
+      //
+      //   decode.success(UpdatePlayerList(player_games))
     }
     "roll-dice" -> decode.success(RollDice)
     "updated-dice-state" -> {
@@ -85,6 +111,8 @@ pub fn event_decoder() -> decode.Decoder(AppEvent) {
     _ -> decode.success(NoOp)
   }
 }
+
+// Helper functions
 
 fn to_event(name: String, json_data: Option(json.Json)) -> json.Json {
   case json_data {

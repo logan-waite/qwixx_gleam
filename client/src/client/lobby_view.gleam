@@ -21,11 +21,11 @@ import shared/player.{type Player, type PlayerGame, Player} as app_player
 // Model -----------------------------------------
 // -----------------------------------------------
 pub type Model {
-  Model(temp_name: String, players: List(Player))
+  Model(temp_name: String, player_games: List(PlayerGame))
 }
 
 pub fn new_model() {
-  Model(temp_name: "", players: [])
+  Model(temp_name: "", player_games: [])
 }
 
 pub fn init(context: Context, model: Model) -> #(Context, Model, Effect(Msg)) {
@@ -90,17 +90,7 @@ pub fn update(
           io.println("player: " <> string.inspect(context.player))
           let get_player_game_effect =
             get_player_game(context.player.id, game.code)
-          let join_game_effect =
-            shared.send_event(
-              context.ws,
-              app_events.JoinGame(game, context.player),
-            )
-          // join game room with game code
-          #(
-            new_context,
-            model,
-            effect.batch([get_player_game_effect, join_game_effect]),
-          )
+          #(new_context, model, get_player_game_effect)
         }
         Error(err) -> {
           io.println("no player_game: " <> string.inspect(err))
@@ -112,7 +102,13 @@ pub fn update(
       case req_result {
         Ok(player_game) -> {
           let new_context = Context(..context, player_game:)
-          #(new_context, model, effect.none())
+          let join_game_effect =
+            shared.send_event(
+              context.ws,
+              app_events.JoinGame(context.game, player_game),
+            )
+          // join game room with game code
+          #(new_context, model, join_game_effect)
         }
         Error(err) -> {
           io.println("need to create a player game")
@@ -147,7 +143,13 @@ pub fn update(
       case req_result {
         Ok(player_game) -> {
           let new_context = Context(..context, player_game:)
-          #(new_context, model, effect.none())
+          let join_game_effect =
+            shared.send_event(
+              context.ws,
+              app_events.JoinGame(context.game, player_game),
+            )
+          // join game room with game code
+          #(new_context, model, join_game_effect)
         }
         Error(_err) -> {
           io.println("error creating game")
@@ -209,9 +211,9 @@ pub fn handle_app_event(
   event: app_events.AppEvent,
 ) {
   case event {
-    app_events.UpdatePlayerList(players) -> {
+    app_events.UpdatePlayerList(player_games) -> {
       io.println("updated player list")
-      let new_model = Model(..model, players:)
+      let new_model = Model(..model, player_games:)
       #(context, new_model, effect.none())
     }
     _ -> {
@@ -254,12 +256,14 @@ pub fn view(context: Context, model: Model) -> Element(Msg) {
     html.div([], [
       html.div([], [
         html.span([attr.style("font-weight", "bold")], [html.text("Players")]),
-        html.div(
-          [],
-          list.map(model.players, fn(player) {
-            html.text(option.unwrap(player.name, "guest"))
-          }),
-        ),
+        html.div([], [
+          html.ul(
+            [],
+            list.map(model.player_games, fn(player_game) {
+              html.li([], [html.text(option.unwrap(player_game.name, "guest"))])
+            }),
+          ),
+        ]),
       ]),
     ]),
   ])

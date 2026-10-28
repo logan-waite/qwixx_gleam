@@ -46,8 +46,9 @@ INSERT INTO player_games (
 RETURNING *;
 
 -- name: GetPlayerGame :one
-SELECT player_games.* FROM player_games
+SELECT players.name, games.code game_code, player_games.* FROM player_games
 JOIN games ON games.id = player_games.game_id
+JOIN players on players.id = player_games.player_id
 WHERE player_games.player_id = ? AND games.code = ?;
 
 -- name: UpdatePlayerGame :one
@@ -62,7 +63,8 @@ WHERE id = ?
 RETURNING *;
 
 -- name: GetPlayerGamesWithGameCode :many
-SELECT player_games.* FROM player_games
+SELECT player_games.*, players.name, games.code game_code FROM player_games
 JOIN games on player_games.game_id = games.id
+JOIN players on players.id = player_games.player_id
 WHERE code = ?;
 

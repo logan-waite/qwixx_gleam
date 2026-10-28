@@ -7,7 +7,7 @@ import youid/uuid.{type Uuid}
 
 import shared/events as app_event
 import shared/game.{type Game, type GameCode, Game} as app_game
-import shared/player.{type Player} as app_player
+import shared/player.{type PlayerGame} as app_player
 
 pub fn start(game: Game) {
   actor.new(GameRoom(players: dict.new(), subjects: dict.new(), state: game))
@@ -17,7 +17,7 @@ pub fn start(game: Game) {
 
 pub type GameRoom {
   GameRoom(
-    players: Dict(Uuid, Player),
+    players: Dict(Uuid, PlayerGame),
     subjects: Dict(Uuid, Subject(Message)),
     state: Game,
   )
@@ -25,9 +25,9 @@ pub type GameRoom {
 
 pub type Message {
   // join/leave with game code
-  Join(Player, Subject(Message))
-  Leave(Player)
-  PlayerUpdated(Player)
+  Join(PlayerGame, Subject(Message))
+  Leave(PlayerGame)
+  // PlayerUpdated(Player)
   Broadcast(app_event.AppEvent)
   GameEnded
 }
@@ -51,13 +51,13 @@ fn handle_message(game: GameRoom, message: Message) {
       // broadcast to every remaining connection that a player left
       actor.continue(game)
     }
-    PlayerUpdated(player) -> {
-      let players =
-        dict.upsert(game.players, player.id, fn(_existing) { player })
-      let game = GameRoom(..game, players:)
-      //broadcast
-      actor.continue(game)
-    }
+    // PlayerUpdated(player) -> {
+    //   let players =
+    //     dict.upsert(game.players, player.id, fn(_existing) { player })
+    //   let game = GameRoom(..game, players:)
+    //   //broadcast
+    //   actor.continue(game)
+    // }
     Broadcast(event) -> {
       todo
     }

@@ -4,6 +4,7 @@ import gleam/option.{type Option, None, Some}
 import gleam/time/timestamp.{type Timestamp}
 import youid/uuid.{type Uuid}
 
+import shared/game
 import shared/utils
 
 pub type Player {
@@ -14,7 +15,8 @@ pub type PlayerGame {
   PlayerGame(
     id: Uuid,
     player_id: Uuid,
-    game_id: Uuid,
+    name: Option(String),
+    game_code: game.GameCode,
     joined: Timestamp,
     ready: Bool,
     // red bitmask
@@ -33,11 +35,12 @@ pub fn new_player() -> Player {
   Player(id: uuid.nil, name: None)
 }
 
-pub fn new_player_game(player_id: Uuid, game_id: Uuid) -> PlayerGame {
+pub fn new_player_game(player: Player, game_code: game.GameCode) -> PlayerGame {
   PlayerGame(
     id: uuid.nil,
-    player_id:,
-    game_id:,
+    player_id: player.id,
+    name: player.name,
+    game_code:,
     joined: timestamp.system_time(),
     ready: False,
     red: 0,
@@ -70,7 +73,8 @@ pub fn player_to_json(player: Player) -> json.Json {
 pub fn player_game_decoder() -> decode.Decoder(PlayerGame) {
   use id <- decode.field("id", utils.uuid_decoder())
   use player_id <- decode.field("player_id", utils.uuid_decoder())
-  use game_id <- decode.field("game_id", utils.uuid_decoder())
+  use name <- decode.field("name", decode.optional(decode.string))
+  use game_code <- decode.field("game_code", decode.string)
   use joined <- decode.field("joined", utils.timestamp_decoder())
   use ready <- decode.field("ready", decode.bool)
   use red <- decode.field("red", decode.int)
@@ -82,7 +86,8 @@ pub fn player_game_decoder() -> decode.Decoder(PlayerGame) {
   decode.success(PlayerGame(
     id:,
     player_id:,
-    game_id:,
+    name:,
+    game_code:,
     joined:,
     ready:,
     red:,
@@ -97,7 +102,8 @@ pub fn player_game_to_json(player_game: PlayerGame) -> json.Json {
   let PlayerGame(
     id:,
     player_id:,
-    game_id:,
+    name:,
+    game_code:,
     joined:,
     ready:,
     red:,
@@ -110,7 +116,8 @@ pub fn player_game_to_json(player_game: PlayerGame) -> json.Json {
   json.object([
     #("id", json.string(uuid.to_string(player_id))),
     #("player_id", json.string(uuid.to_string(player_id))),
-    #("game_id", json.string(uuid.to_string(game_id))),
+    #("name", json.nullable(name, json.string)),
+    #("game_code", json.string(game_code)),
     #("joined", utils.timestamp_to_json(joined)),
     #("ready", json.bool(ready)),
     #("red", json.int(red)),

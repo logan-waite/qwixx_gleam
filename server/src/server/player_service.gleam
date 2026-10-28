@@ -12,6 +12,7 @@ import youid/uuid.{type Uuid}
 
 import server/parrot
 import server/sql
+import shared/game.{type Game}
 import shared/player.{type Player, type PlayerGame, Player, PlayerGame} as app_player
 import shared/utils
 
@@ -64,38 +65,33 @@ fn get_player_to_player(get_player: sql.GetPlayer) -> Player {
   Player(id: player_id, name:)
 }
 
-pub fn get_player(id: String, db_conn: sqlight.Connection) {
+pub fn get_player_db(id id: String, db_conn db_conn: sqlight.Connection) {
   let sql_result =
     sql.get_player(id)
     |> parrot.run_query(db_conn)
 
   case sql_result {
     Ok(row) -> {
-      let maybe_player =
-        row
-        |> list.map(get_player_to_player)
-        |> utils.unwrap_list()
-
-      case maybe_player {
-        Some(player) -> {
-          let return_body =
-            app_player.player_to_json(player) |> json.to_string()
-
-          wisp.ok()
-          |> wisp.json_body(return_body)
-        }
-        None -> {
-          // No row returned
-          wisp.internal_server_error()
-          |> wisp.json_body("No db row returned")
-        }
-      }
+      row |> list.map(get_player_to_player) |> utils.unwrap_list()
     }
-    Error(err) -> {
-      // db errors
+    Error(_err) -> {
+      None
+    }
+  }
+}
+
+pub fn get_player(id id: String, db_conn db_conn: sqlight.Connection) {
+  case get_player_db(id, db_conn) {
+    Some(player) -> {
+      let return_body = app_player.player_to_json(player) |> json.to_string()
+
+      wisp.ok()
+      |> wisp.json_body(return_body)
+    }
+    None ->
+      // No row returned
       wisp.internal_server_error()
-      |> wisp.json_body(string.inspect(err))
-    }
+      |> wisp.json_body("No db row returned")
   }
 }
 
@@ -143,7 +139,11 @@ pub fn update_player(player: Player, db_conn: sqlight.Connection) {
 
 // player game
 
-fn add_player_game_to_player_game(add_player_game: sql.AddPlayerGame) {
+fn add_player_game_to_player_game(
+  add_player_game: sql.AddPlayerGame,
+  name: Option(String),
+  game_code: game.GameCode,
+) {
   let sql.AddPlayerGame(
     id:,
     player_id:,
@@ -159,10 +159,6 @@ fn add_player_game_to_player_game(add_player_game: sql.AddPlayerGame) {
 
   let id = id |> uuid.from_string() |> result.unwrap(uuid.nil)
   let player_id = player_id |> uuid.from_string() |> result.unwrap(uuid.nil)
-  let game_id =
-    game_id
-    |> uuid.from_string()
-    |> result.unwrap(uuid.nil)
   let joined =
     timestamp.from_unix_seconds_and_nanoseconds(
       joined / 1_000_000_000,
@@ -173,7 +169,8 @@ fn add_player_game_to_player_game(add_player_game: sql.AddPlayerGame) {
   PlayerGame(
     id:,
     player_id:,
-    game_id:,
+    game_code:,
+    name:,
     joined:,
     ready:,
     red:,
@@ -204,8 +201,8 @@ pub fn create_player_game_request_decoder() -> decode.Decoder(
 }
 
 pub fn create_player_game(
-  player_id: Uuid,
-  game_id: Uuid,
+  player: Player,
+  game: Game,
   db_conn: sqlight.Connection,
 ) {
   let joined =
@@ -219,8 +216,8 @@ pub fn create_player_game(
   let sql_result =
     sql.add_player_game(
       id: uuid.v4() |> uuid.to_string(),
-      player_id: player_id |> uuid.to_string(),
-      game_id: game_id |> uuid.to_string,
+      player_id: player.id |> uuid.to_string(),
+      game_id: game.id |> uuid.to_string,
       joined: joined,
       ready: True,
       red: 0,
@@ -232,7 +229,9 @@ pub fn create_player_game(
   case parrot.run_query(sql_result, db_conn) {
     Ok(row) -> {
       let maybe_player_game =
-        row |> list.map(add_player_game_to_player_game) |> utils.unwrap_list()
+        row
+        |> list.map(add_player_game_to_player_game(_, player.name, game.code))
+        |> utils.unwrap_list()
 
       case maybe_player_game {
         Some(player_game) -> {
@@ -260,7 +259,9 @@ fn get_player_game_to_player_game(
   let sql.GetPlayerGame(
     id:,
     player_id:,
+    name:,
     game_id:,
+    game_code:,
     joined:,
     ready:,
     red:,
@@ -272,10 +273,6 @@ fn get_player_game_to_player_game(
 
   let id = id |> uuid.from_string() |> result.unwrap(uuid.nil)
   let player_id = player_id |> uuid.from_string() |> result.unwrap(uuid.nil)
-  let game_id =
-    game_id
-    |> uuid.from_string()
-    |> result.unwrap(uuid.nil)
   let joined =
     timestamp.from_unix_seconds_and_nanoseconds(
       joined / 1_000_000_000,
@@ -285,7 +282,8 @@ fn get_player_game_to_player_game(
   PlayerGame(
     id:,
     player_id:,
-    game_id:,
+    name:,
+    game_code:,
     joined:,
     ready:,
     red:,
@@ -344,7 +342,9 @@ fn get_player_game_with_game_code_to_player_game(
   let sql.GetPlayerGamesWithGameCode(
     id:,
     player_id:,
+    name:,
     game_id:,
+    game_code:,
     joined:,
     ready:,
     red:,
@@ -356,10 +356,6 @@ fn get_player_game_with_game_code_to_player_game(
 
   let id = id |> uuid.from_string() |> result.unwrap(uuid.nil)
   let player_id = player_id |> uuid.from_string() |> result.unwrap(uuid.nil)
-  let game_id =
-    game_id
-    |> uuid.from_string()
-    |> result.unwrap(uuid.nil)
   let joined =
     timestamp.from_unix_seconds_and_nanoseconds(
       joined / 1_000_000_000,
@@ -369,7 +365,7 @@ fn get_player_game_with_game_code_to_player_game(
   PlayerGame(
     id:,
     player_id:,
-    game_id:,
+    game_code:,
     joined:,
     ready:,
     red:,
@@ -377,5 +373,6 @@ fn get_player_game_with_game_code_to_player_game(
     green:,
     blue:,
     missed:,
+    name:,
   )
 }

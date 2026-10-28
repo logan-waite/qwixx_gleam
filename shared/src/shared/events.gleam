@@ -17,8 +17,8 @@ import shared/player.{type Player, type PlayerGame}
 // }
 
 pub type AppEvent {
-  JoinGame(Game, Player)
-  UpdatePlayerList(List(Player))
+  JoinGame(Game, PlayerGame)
+  UpdatePlayerList(List(PlayerGame))
   // Legacy
   RollDice
   UpdatedDiceState(DiceState)
@@ -32,13 +32,13 @@ pub type AppEvent {
 
 pub fn event_to_json(event: AppEvent) -> json.Json {
   case event {
-    JoinGame(game, player) -> {
+    JoinGame(game, player_game) -> {
       to_event(
         "join-game",
         Some(
           json.object([
             #("game", game.game_to_json(game)),
-            #("player", player.player_to_json(player)),
+            #("player_game", player.player_game_to_json(player_game)),
           ]),
         ),
       )
@@ -46,8 +46,7 @@ pub fn event_to_json(event: AppEvent) -> json.Json {
     UpdatePlayerList(player_games) ->
       to_event(
         "update-player-list",
-        Some(json.array(player_games, player.player_to_json)),
-        // Some(json.array(player_games, player.player_game_to_json)),
+        Some(json.array(player_games, player.player_game_to_json)),
       )
     RollDice -> to_event("roll-dice", None)
     UpdatedDiceState(dice_state) ->
@@ -72,21 +71,21 @@ pub fn event_decoder() -> decode.Decoder(AppEvent) {
   case event {
     "join-game" -> {
       use game <- decode.subfield(["data", "game"], game.game_decoder())
-      use player <- decode.subfield(["data", "player"], player.player_decoder())
+      use player_game <- decode.subfield(
+        ["data", "player_game"],
+        player.player_game_decoder(),
+      )
 
-      decode.success(JoinGame(game, player))
+      decode.success(JoinGame(game, player_game))
     }
     // Legacy
     "update-player-list" -> {
-      use players <- decode.field("data", decode.list(player.player_decoder()))
+      use player_games <- decode.field(
+        "data",
+        decode.list(player.player_game_decoder()),
+      )
 
-      decode.success(UpdatePlayerList(players))
-      //   use player_games <- decode.field(
-      //     "data",
-      //     decode.list(player.player_game_decoder()),
-      //   )
-      //
-      //   decode.success(UpdatePlayerList(player_games))
+      decode.success(UpdatePlayerList(player_games))
     }
     "roll-dice" -> decode.success(RollDice)
     "updated-dice-state" -> {
@@ -136,7 +135,7 @@ pub fn parse_event(msg: String) -> AppEvent {
         json.UnexpectedSequence(str) ->
           io.println("unexpected sequence: " <> str)
         json.UnableToDecode(decode_errors) -> {
-          io.println("errors when decoding:")
+          io.println("errors when decoding " <> msg <> ":")
           list.map(decode_errors, fn(error) {
             let decode.DecodeError(expected:, found:, path:) = error
             io.println(

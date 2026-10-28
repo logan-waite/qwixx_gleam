@@ -165,7 +165,7 @@ fn handle_api_request(db_conn, req: Request, path: List(String)) {
         Ok(player) -> {
           let game = game_service.create_game(db_conn)
           let _player_game =
-            player_service.create_player_game(player.id, game.id, db_conn)
+            player_service.create_player_game(player, game, db_conn)
           let body = app_game.game_to_json(game) |> json.to_string()
 
           wisp.created()
@@ -186,17 +186,26 @@ fn handle_api_request(db_conn, req: Request, path: List(String)) {
         Ok(create_player_game_request) -> {
           let player_service.CreatePlayerGameRequest(player_id:) =
             create_player_game_request
-          let maybe_game = game_service.get_game_by_code_db(game_code, db_conn)
-          case maybe_game {
-            Some(game) -> {
-              let response =
-                player_service.create_player_game(player_id, game.id, db_conn)
-              // let player_games = player_service.get_game_players()
-              // events.UpdatePlayerList(player_games)
-              // |> events.event_to_text()
-              // |> mist.send_text_frame(conn, _)
-              response
+          case
+            player_service.get_player_db(uuid.to_string(player_id), db_conn)
+          {
+            Some(player) -> {
+              case game_service.get_game_by_code_db(game_code, db_conn) {
+                Some(game) -> {
+                  let response =
+                    player_service.create_player_game(player, game, db_conn)
+                  // let player_games = player_service.get_game_players()
+                  // events.UpdatePlayerList(player_games)
+                  // |> events.event_to_text()
+                  // |> mist.send_text_frame(conn, _)
+                  response
+                }
+                None -> {
+                  wisp.not_found()
+                }
+              }
             }
+
             None -> {
               wisp.not_found()
             }
@@ -269,10 +278,10 @@ fn handle_app_event(
   state: WebSocketState,
 ) -> #(Option(AppEvent), WebSocketState) {
   case event {
-    events.JoinGame(game, player) -> {
+    events.JoinGame(game, player_game) -> {
       io.println("received JoinGame event")
       io.println("code: " <> game.code)
-      io.println("player: " <> string.inspect(player))
+      io.println("player: " <> string.inspect(player_game))
       // now we join the game room using the subject in the state
 
       let subject = case state.subject {
@@ -284,7 +293,7 @@ fn handle_app_event(
       case room_manager.get_or_start_room(state.room_manager, game) {
         Ok(room_subject) -> {
           io.println("got room subject: " <> string.inspect(room_subject))
-          process.send(room_subject, room.Join(player, subject))
+          process.send(room_subject, room.Join(player_game, subject))
         }
         Error(Nil) -> {
           io.println("got an error from getting room")

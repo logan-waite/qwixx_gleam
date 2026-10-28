@@ -235,6 +235,8 @@ pub fn add_player_game_decoder() -> decode.Decoder(AddPlayerGame) {
 
 pub type GetPlayerGame {
   GetPlayerGame(
+    name: Option(String),
+    game_code: String,
     id: String,
     player_id: String,
     game_id: String,
@@ -250,8 +252,9 @@ pub type GetPlayerGame {
 
 pub fn get_player_game(player_id player_id: String, code code: String) {
   let sql =
-    "SELECT player_games.id, player_games.player_id, player_games.game_id, player_games.joined, player_games.ready, player_games.red, player_games.yellow, player_games.green, player_games.blue, player_games.missed FROM player_games
+    "SELECT players.name, games.code game_code, player_games.id, player_games.player_id, player_games.game_id, player_games.joined, player_games.ready, player_games.red, player_games.yellow, player_games.green, player_games.blue, player_games.missed FROM player_games
 JOIN games ON games.id = player_games.game_id
+JOIN players on players.id = player_games.player_id
 WHERE player_games.player_id = ? AND games.code = ?"
   #(
     sql,
@@ -261,17 +264,21 @@ WHERE player_games.player_id = ? AND games.code = ?"
 }
 
 pub fn get_player_game_decoder() -> decode.Decoder(GetPlayerGame) {
-  use id <- decode.field(0, decode.string)
-  use player_id <- decode.field(1, decode.string)
-  use game_id <- decode.field(2, decode.string)
-  use joined <- decode.field(3, decode.int)
-  use ready <- decode.field(4, dev.bool_decoder())
-  use red <- decode.field(5, decode.int)
-  use yellow <- decode.field(6, decode.int)
-  use green <- decode.field(7, decode.int)
-  use blue <- decode.field(8, decode.int)
-  use missed <- decode.field(9, decode.int)
+  use name <- decode.field(0, decode.optional(decode.string))
+  use game_code <- decode.field(1, decode.string)
+  use id <- decode.field(2, decode.string)
+  use player_id <- decode.field(3, decode.string)
+  use game_id <- decode.field(4, decode.string)
+  use joined <- decode.field(5, decode.int)
+  use ready <- decode.field(6, dev.bool_decoder())
+  use red <- decode.field(7, decode.int)
+  use yellow <- decode.field(8, decode.int)
+  use green <- decode.field(9, decode.int)
+  use blue <- decode.field(10, decode.int)
+  use missed <- decode.field(11, decode.int)
   decode.success(GetPlayerGame(
+    name:,
+    game_code:,
     id:,
     player_id:,
     game_id:,
@@ -371,13 +378,16 @@ pub type GetPlayerGamesWithGameCode {
     green: Int,
     blue: Int,
     missed: Int,
+    name: Option(String),
+    game_code: String,
   )
 }
 
 pub fn get_player_games_with_game_code(code code: String) {
   let sql =
-    "SELECT player_games.id, player_games.player_id, player_games.game_id, player_games.joined, player_games.ready, player_games.red, player_games.yellow, player_games.green, player_games.blue, player_games.missed FROM player_games
+    "SELECT player_games.id, player_games.player_id, player_games.game_id, player_games.joined, player_games.ready, player_games.red, player_games.yellow, player_games.green, player_games.blue, player_games.missed, players.name, games.code game_code FROM player_games
 JOIN games on player_games.game_id = games.id
+JOIN players on players.id = player_games.player_id
 WHERE code = ?"
   #(sql, [dev.ParamString(code)], get_player_games_with_game_code_decoder())
 }
@@ -395,6 +405,8 @@ pub fn get_player_games_with_game_code_decoder() -> decode.Decoder(
   use green <- decode.field(7, decode.int)
   use blue <- decode.field(8, decode.int)
   use missed <- decode.field(9, decode.int)
+  use name <- decode.field(10, decode.optional(decode.string))
+  use game_code <- decode.field(11, decode.string)
   decode.success(GetPlayerGamesWithGameCode(
     id:,
     player_id:,
@@ -406,5 +418,7 @@ pub fn get_player_games_with_game_code_decoder() -> decode.Decoder(
     green:,
     blue:,
     missed:,
+    name:,
+    game_code:,
   ))
 }

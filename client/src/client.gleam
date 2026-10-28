@@ -73,7 +73,7 @@ fn init(_) -> #(Model, Effect(Msg)) {
   let dice_state = dice.new_dice_state()
   let player = app_player.new_player()
   let game = app_game.empty_game()
-  let player_game = app_player.new_player_game(player.id, game.id)
+  let player_game = app_player.new_player_game(player, game.code)
 
   let startup_effects = [
     ws.init("/ws", WsWrapper),

@@ -74,7 +74,8 @@ pub fn get_player_db(id id: String, db_conn db_conn: sqlight.Connection) {
     Ok(row) -> {
       row |> list.map(get_player_to_player) |> utils.unwrap_list()
     }
-    Error(_err) -> {
+    Error(err) -> {
+      io.println("db error in get_player_db: " <> string.inspect(err))
       None
     }
   }
@@ -101,7 +102,7 @@ fn update_player_to_player(update_player: sql.UpdatePlayer) -> Player {
   Player(id: player_id, name:)
 }
 
-pub fn update_player(player: Player, db_conn: sqlight.Connection) {
+pub fn update_player_db(player: Player, db_conn: sqlight.Connection) {
   let player_id = uuid.to_string(player.id)
   let sql_result =
     sql.update_player(id: player_id, name: player.name)
@@ -109,30 +110,29 @@ pub fn update_player(player: Player, db_conn: sqlight.Connection) {
 
   case sql_result {
     Ok(row) -> {
-      let maybe_player =
-        row
-        |> list.map(update_player_to_player)
-        |> utils.unwrap_list()
-
-      case maybe_player {
-        Some(player) -> {
-          let return_body =
-            app_player.player_to_json(player) |> json.to_string()
-
-          wisp.ok()
-          |> wisp.json_body(return_body)
-        }
-        None -> {
-          // No row returned
-          io.println("no row returned")
-          wisp.internal_server_error()
-        }
-      }
+      row
+      |> list.map(update_player_to_player)
+      |> utils.unwrap_list()
     }
     Error(err) -> {
-      // db errors
+      io.println("db error in update_player_db: " <> string.inspect(err))
+      None
+    }
+  }
+}
+
+pub fn update_player(player: Player, db_conn: sqlight.Connection) {
+  case update_player_db(player, db_conn) {
+    Some(player) -> {
+      let return_body = app_player.player_to_json(player) |> json.to_string()
+
+      wisp.ok()
+      |> wisp.json_body(return_body)
+    }
+    None -> {
+      // No row returned
+      io.println("no row returned")
       wisp.internal_server_error()
-      |> wisp.json_body(string.inspect(err))
     }
   }
 }

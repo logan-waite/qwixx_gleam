@@ -1,3 +1,4 @@
+import gleam/bool
 import gleam/http/response
 import gleam/io
 import gleam/json
@@ -15,7 +16,7 @@ import youid/uuid.{type Uuid}
 import client/shared.{type Context, Context, Lobby}
 import shared/events as app_events
 import shared/game.{type Game} as app_game
-import shared/player.{type Player, type PlayerGame, Player} as app_player
+import shared/player.{type Player, type PlayerGame, Player, PlayerGame} as app_player
 
 // -----------------------------------------------
 // Model -----------------------------------------
@@ -188,20 +189,27 @@ fn update_player_name(
   model: Model,
 ) -> #(Context, Model, Effect(Msg)) {
   let player = Player(..context.player, name: Some(model.temp_name))
+  let player_game =
+    PlayerGame(..context.player_game, name: Some(model.temp_name))
   let new_model = Model(..model, temp_name: "")
 
-  let url = "/api/player"
-  let body = app_player.player_to_json(player)
-
-  let effect =
-    rsvp.put(
-      url,
-      body,
-      rsvp.expect_json(app_player.player_decoder(), ServerReturnedPlayer),
-    )
-
-  // Send updated name to server
-  #(Context(..context, player: player), new_model, effect)
+  #(
+    Context(..context, player:, player_game:),
+    new_model,
+    shared.send_event(context.ws, app_events.UpdatePlayerGame(player_game)),
+  )
+  // let url = "/api/player"
+  // let body = app_player.player_to_json(player)
+  //
+  // let effect =
+  //   rsvp.put(
+  //     url,
+  //     body,
+  //     rsvp.expect_json(app_player.player_decoder(), ServerReturnedPlayer),
+  //   )
+  //
+  // // Send updated name to server
+  // #(Context(..context, player: player), new_model, effect)
 }
 
 // websocket messages ---------------------------
@@ -257,14 +265,36 @@ pub fn view(context: Context, model: Model) -> Element(Msg) {
       html.div([], [
         html.span([attr.style("font-weight", "bold")], [html.text("Players")]),
         html.div([], [
-          html.ul(
-            [],
-            list.map(model.player_games, fn(player_game) {
-              html.li([], [html.text(option.unwrap(player_game.name, "guest"))])
-            }),
-          ),
+          html.ul([], list.map(model.player_games, player_name(_, player.id))),
         ]),
       ]),
     ]),
+  ])
+}
+
+fn player_name(player_game: PlayerGame, player_id: Uuid) -> Element(Msg) {
+  let button_text = fn(ready: Bool) {
+    case ready {
+      True -> "Wait!"
+      False -> "I'm Ready!"
+    }
+  }
+  html.li([attr.style("display", "flex"), attr.style("gap", "10px")], [
+    html.span([], [html.text(option.unwrap(player_game.name, "guest"))]),
+    html.span([], [html.text(bool.to_string(player_game.ready))]),
+    case player_game.player_id == player_id {
+      True ->
+        html.button(
+          [
+            event.on_click(
+              WsEffect(app_events.UpdatePlayerGame(
+                PlayerGame(..player_game, ready: !player_game.ready),
+              )),
+            ),
+          ],
+          [html.text(button_text(player_game.ready))],
+        )
+      False -> element.none()
+    },
   ])
 }

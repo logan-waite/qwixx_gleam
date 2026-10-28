@@ -18,6 +18,7 @@ import shared/player.{type Player, type PlayerGame}
 
 pub type AppEvent {
   JoinGame(Game, PlayerGame)
+  UpdatePlayerGame(PlayerGame)
   UpdatePlayerList(List(PlayerGame))
   // Legacy
   RollDice
@@ -43,6 +44,11 @@ pub fn event_to_json(event: AppEvent) -> json.Json {
         ),
       )
     }
+    UpdatePlayerGame(player_game) ->
+      to_event(
+        "update-player-game",
+        Some(player.player_game_to_json(player_game)),
+      )
     UpdatePlayerList(player_games) ->
       to_event(
         "update-player-list",
@@ -78,7 +84,11 @@ pub fn event_decoder() -> decode.Decoder(AppEvent) {
 
       decode.success(JoinGame(game, player_game))
     }
-    // Legacy
+    "update-player-game" -> {
+      use player_game <- decode.field("data", player.player_game_decoder())
+
+      decode.success(UpdatePlayerGame(player_game))
+    }
     "update-player-list" -> {
       use player_games <- decode.field(
         "data",
@@ -87,6 +97,7 @@ pub fn event_decoder() -> decode.Decoder(AppEvent) {
 
       decode.success(UpdatePlayerList(player_games))
     }
+    // Legacy
     "roll-dice" -> decode.success(RollDice)
     "updated-dice-state" -> {
       use dice_state <- decode.field("data", dice.dice_state_decoder())

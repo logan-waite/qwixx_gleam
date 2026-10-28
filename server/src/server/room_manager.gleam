@@ -13,6 +13,7 @@ pub type Message {
     game: Game,
     reply_to: Subject(Result(Subject(room.Message), Nil)),
   )
+  GetRoom(code: GameCode, reply_to: Subject(Result(Subject(room.Message), Nil)))
 }
 
 pub type State {
@@ -43,12 +44,17 @@ pub fn get_or_start_room(
   manager: Subject(Message),
   game: Game,
 ) -> Result(Subject(room.Message), Nil) {
-  io.println("get_or_start_room")
   process.call(manager, 5000, GetOrStartRoom(game, _))
 }
 
+pub fn get_room(
+  manager: Subject(Message),
+  code: GameCode,
+) -> Result(Subject(room.Message), Nil) {
+  process.call(manager, 5000, GetRoom(code, _))
+}
+
 fn handle_message(state: State, message: Message) {
-  io.println("handling room_manager message")
   case message {
     GetOrStartRoom(game, reply_to) -> {
       case dict.get(state.rooms, game.code) {
@@ -74,6 +80,18 @@ fn handle_message(state: State, message: Message) {
               actor.continue(state)
             }
           }
+        }
+      }
+    }
+    GetRoom(code, reply_to) -> {
+      case dict.get(state.rooms, code) {
+        Ok(room_subject) -> {
+          process.send(reply_to, Ok(room_subject))
+          actor.continue(state)
+        }
+        Error(Nil) -> {
+          process.send(reply_to, Error(Nil))
+          actor.continue(state)
         }
       }
     }

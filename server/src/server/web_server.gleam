@@ -26,7 +26,7 @@ import server/room_manager
 import shared/dice.{type DiceState, DiceState, Die}
 import shared/events.{type AppEvent}
 import shared/game as app_game
-import shared/player.{type Player, type PlayerGame} as app_player
+import shared/player.{type Player, type PlayerGame, Player} as app_player
 
 pub fn supervised(room_manager_name: process.Name(room_manager.Message)) {
   wisp.configure_logger()
@@ -279,16 +279,12 @@ fn handle_app_event(
 ) -> #(Option(AppEvent), WebSocketState) {
   case event {
     events.JoinGame(game, player_game) -> {
-      io.println("received JoinGame event")
-      io.println("code: " <> game.code)
-      io.println("player: " <> string.inspect(player_game))
       // now we join the game room using the subject in the state
 
       let subject = case state.subject {
         Some(sub) -> sub
         None -> panic as "We need a subject from on_init to send messages to!"
       }
-      io.println("subject: " <> string.inspect(subject))
 
       case room_manager.get_or_start_room(state.room_manager, game) {
         Ok(room_subject) -> {
@@ -300,6 +296,28 @@ fn handle_app_event(
         }
       }
       // process.send(subject, .Join(player, subject))
+      #(None, state)
+    }
+    events.UpdatePlayerGame(player_game) -> {
+      // Update database
+      let player = Player(name: player_game.name, id: player_game.player_id)
+      case player_service.update_player_db(player, state.db_conn) {
+        Some(_player) -> {
+          //notify room
+          case
+            room_manager.get_room(state.room_manager, player_game.game_code)
+          {
+            Ok(room_subject) -> {
+              process.send(room_subject, room.PlayerUpdated(player_game))
+            }
+            Error(Nil) -> {
+              io.println("no room to get, need to reconnect")
+              todo
+            }
+          }
+        }
+        None -> todo
+      }
       #(None, state)
     }
     events.RollDice -> #(

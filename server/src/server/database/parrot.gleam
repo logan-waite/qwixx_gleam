@@ -1,8 +1,5 @@
-import gleam/bool
 import gleam/dynamic/decode
-import gleam/io
 import gleam/list
-import gleam/string
 import parrot/dev
 import sqlight
 

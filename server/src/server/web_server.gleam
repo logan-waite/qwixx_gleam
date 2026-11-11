@@ -9,6 +9,7 @@ import gleam/int
 import gleam/io
 import gleam/json
 import gleam/option.{type Option, None, Some}
+import gleam/result
 import gleam/string
 import lustre/attribute
 import lustre/element
@@ -17,10 +18,9 @@ import mist.{type Connection, type ResponseData}
 import sqlight
 import wisp.{type Request, type Response}
 import wisp/wisp_mist
-import youid/uuid
+import youid/uuid.{type Uuid}
 
-import server/game_service
-import server/player_service
+import server/database/db
 import server/room
 import server/room_manager
 import shared/dice.{type DiceState, DiceState, Die}
@@ -145,16 +145,89 @@ fn handle_api_request(db_conn, req: Request, path: List(String)) {
       use json <- wisp.require_json(req)
 
       case decode.run(json, app_player.player_decoder()) {
-        Ok(player_req) -> player_service.create_player(player_req, db_conn)
+        Ok(player) -> {
+          case db.add_player(player, db_conn) {
+            Ok(maybe_player) -> {
+              case maybe_player {
+                Some(player) -> {
+                  let return_body =
+                    app_player.player_to_json(player) |> json.to_string()
+
+                  wisp.created()
+                  |> wisp.json_body(return_body)
+                }
+                None -> {
+                  wisp.internal_server_error()
+                  |> wisp.json_body(
+                    "No player returned from add player operation",
+                  )
+                }
+              }
+            }
+            Error(err) -> {
+              // db errors
+              wisp.internal_server_error()
+              |> wisp.json_body(string.inspect(err))
+            }
+          }
+        }
         Error(err) -> wisp.bad_request(string.inspect(err))
       }
     }
-    Get, ["player", id] -> player_service.get_player(id, db_conn)
+    Get, ["player", id] -> {
+      case db.get_player(id, db_conn) {
+        Ok(maybe_player) -> {
+          case maybe_player {
+            Some(player) -> {
+              let return_body =
+                app_player.player_to_json(player) |> json.to_string()
+
+              wisp.ok()
+              |> wisp.json_body(return_body)
+            }
+            None ->
+              // No row returned
+              wisp.not_found()
+              |> wisp.json_body("No player found")
+          }
+        }
+        Error(err) -> {
+          // db errors
+          wisp.internal_server_error()
+          |> wisp.json_body(string.inspect(err))
+        }
+      }
+    }
+
     Put, ["player"] -> {
       use json <- wisp.require_json(req)
 
       case decode.run(json, app_player.player_decoder()) {
-        Ok(player) -> player_service.update_player(player, db_conn)
+        Ok(player) -> {
+          case db.update_player(player, db_conn) {
+            Ok(some_player) -> {
+              case some_player {
+                Some(player) -> {
+                  let return_body =
+                    app_player.player_to_json(player) |> json.to_string()
+
+                  wisp.ok()
+                  |> wisp.json_body(return_body)
+                }
+                None -> {
+                  // No row returned
+                  io.println("no player returned")
+                  wisp.internal_server_error()
+                }
+              }
+            }
+            Error(err) -> {
+              // db errors
+              wisp.internal_server_error()
+              |> wisp.json_body(string.inspect(err))
+            }
+          }
+        }
         Error(err) -> wisp.bad_request(string.inspect(err))
       }
     }
@@ -163,65 +236,181 @@ fn handle_api_request(db_conn, req: Request, path: List(String)) {
 
       case decode.run(json, app_player.player_decoder()) {
         Ok(player) -> {
-          let game = game_service.create_game(db_conn)
-          let _player_game =
-            player_service.create_player_game(player, game, db_conn)
-          let body = app_game.game_to_json(game) |> json.to_string()
+          // let game = game_service.create_game(db_conn)
+          let db_results =
+            db.add_game(db_conn)
+            |> result.try(fn(maybe_game) {
+              case maybe_game {
+                Some(game) -> {
+                  db.add_player_game(player, game, db_conn)
+                  |> result.map(fn(_player_game) { game })
+                }
+                None -> {
+                  Error("Error getting game back from creation")
+                }
+              }
+            })
 
-          wisp.created()
-          |> wisp.json_body(body)
+          case db_results {
+            Ok(game) -> {
+              let body = app_game.game_to_json(game) |> json.to_string()
+
+              wisp.created()
+              |> wisp.json_body(body)
+            }
+            Error(err) -> {
+              wisp.internal_server_error() |> wisp.json_body(err)
+            }
+          }
         }
         Error(err) -> {
           wisp.bad_request(string.inspect(err))
         }
       }
     }
-    Get, ["game", code] -> game_service.get_game_by_code(code, db_conn)
-    Post, ["game", game_code, "player"] -> {
-      use json <- wisp.require_json(req)
+    Get, ["game", code] -> {
+      case db.get_game_by_code(code, db_conn) {
+        Ok(maybe_game) -> {
+          case maybe_game {
+            Some(game) -> {
+              let return_body = app_game.game_to_json(game) |> json.to_string()
 
-      case
-        decode.run(json, player_service.create_player_game_request_decoder())
-      {
-        Ok(create_player_game_request) -> {
-          let player_service.CreatePlayerGameRequest(player_id:) =
-            create_player_game_request
-          case
-            player_service.get_player_db(uuid.to_string(player_id), db_conn)
-          {
-            Some(player) -> {
-              case game_service.get_game_by_code_db(game_code, db_conn) {
-                Some(game) -> {
-                  let response =
-                    player_service.create_player_game(player, game, db_conn)
-                  // let player_games = player_service.get_game_players()
-                  // events.UpdatePlayerList(player_games)
-                  // |> events.event_to_text()
-                  // |> mist.send_text_frame(conn, _)
-                  response
-                }
-                None -> {
-                  wisp.not_found()
-                }
-              }
+              wisp.ok()
+              |> wisp.json_body(return_body)
             }
-
             None -> {
               wisp.not_found()
             }
           }
         }
-        Error(_) -> {
-          todo
+        Error(err) -> {
+          wisp.internal_server_error() |> wisp.json_body(err)
         }
       }
     }
-    Get, ["game", game_code, "player", player_id] ->
-      player_service.get_player_game(player_id, game_code, db_conn)
+    Post, ["game", game_code, "player"] -> {
+      use json <- wisp.require_json(req)
+
+      case decode.run(json, create_player_game_request_decoder()) {
+        Ok(create_player_game_request) -> {
+          let CreatePlayerGameRequest(player_id:) = create_player_game_request
+          // get player
+          // get game by code
+          // create a player game from that. 
+          let player_game_result =
+            db.get_player(uuid.to_string(player_id), db_conn)
+            |> result.try(fn(maybe_player) {
+              case maybe_player {
+                Some(player) -> Ok(player)
+                None -> Error("Player Not Found")
+              }
+            })
+            |> result.try(fn(player) {
+              case db.get_game_by_code(game_code, db_conn) {
+                Ok(maybe_game) -> {
+                  case maybe_game {
+                    Some(game) -> {
+                      Ok(#(player, game))
+                    }
+                    None -> Error("Game Not Found")
+                  }
+                }
+                Error(err) -> {
+                  Error("Error getting game: " <> err)
+                }
+              }
+            })
+            |> result.try(fn(result) {
+              let #(player, game) = result
+              case db.add_player_game(player, game, db_conn) {
+                Ok(maybe_player_game) -> {
+                  case maybe_player_game {
+                    Some(player_game) -> {
+                      Ok(player_game)
+                    }
+                    None -> {
+                      Error("didn't retrieve created player game")
+                    }
+                  }
+                }
+                Error(err) -> {
+                  Error("Error creating player game: " <> err)
+                }
+              }
+            })
+
+          case player_game_result {
+            Ok(player_game) -> {
+              let response_body =
+                player_game
+                |> app_player.player_game_to_json()
+                |> json.to_string()
+
+              wisp.ok()
+              |> wisp.json_body(response_body)
+            }
+            Error(err) -> {
+              case string.contains(err, "Not Found") {
+                True -> wisp.not_found() |> wisp.json_body(err)
+                False -> wisp.internal_server_error() |> wisp.json_body(err)
+              }
+            }
+          }
+        }
+        Error(err) -> {
+          wisp.bad_request(
+            "handle player_game_request_decoder error: " <> string.inspect(err),
+          )
+        }
+      }
+    }
+    Get, ["game", game_code, "player", player_id] -> {
+      case db.get_player_game(player_id, game_code, db_conn) {
+        Ok(maybe_player_game) -> {
+          case maybe_player_game {
+            Some(player_game) -> {
+              let return_body =
+                player_game
+                |> app_player.player_game_to_json()
+                |> json.to_string()
+              wisp.ok()
+              |> wisp.json_body(return_body)
+            }
+            None -> {
+              wisp.not_found()
+            }
+          }
+        }
+        Error(err) -> {
+          // db errors
+          wisp.internal_server_error()
+          |> wisp.json_body(string.inspect(err))
+        }
+      }
+    }
     _, _ -> {
       io.println("unknown route called")
       wisp.not_found()
     }
+  }
+}
+
+type CreatePlayerGameRequest {
+  CreatePlayerGameRequest(player_id: Uuid)
+}
+
+fn create_player_game_request_decoder() -> decode.Decoder(
+  CreatePlayerGameRequest,
+) {
+  use player_id <- decode.field("player_id", decode.string)
+
+  case uuid.from_string(player_id) {
+    Ok(id) -> decode.success(CreatePlayerGameRequest(player_id: id))
+    Error(_) ->
+      decode.failure(
+        CreatePlayerGameRequest(player_id: uuid.nil),
+        "CreatePlayerRequest",
+      )
   }
 }
 
@@ -253,7 +442,6 @@ fn handle_ws_request(
       }
     }
     mist.Custom(msg) -> {
-      io.println("Received custom msg: " <> string.inspect(msg))
       case msg {
         room.Broadcast(event) -> {
           let _ = events.event_to_text(event) |> mist.send_text_frame(conn, _)
@@ -286,13 +474,16 @@ fn handle_app_event(
         None -> panic as "We need a subject from on_init to send messages to!"
       }
 
-      case room_manager.get_or_start_room(state.room_manager, game) {
+      case
+        room_manager.get_or_start_room(state.room_manager, game, state.db_conn)
+      {
         Ok(room_subject) -> {
           io.println("got room subject: " <> string.inspect(room_subject))
           process.send(room_subject, room.Join(player_game, subject))
         }
         Error(Nil) -> {
           io.println("got an error from getting room")
+          todo as "need to figure out how to reconnect to missing room"
         }
       }
       // process.send(subject, .Join(player, subject))
@@ -301,22 +492,24 @@ fn handle_app_event(
     events.UpdatePlayerGame(player_game) -> {
       // Update database
       let player = Player(name: player_game.name, id: player_game.player_id)
-      case player_service.update_player_db(player, state.db_conn) {
-        Some(_player) -> {
-          //notify room
-          case
-            room_manager.get_room(state.room_manager, player_game.game_code)
-          {
-            Ok(room_subject) -> {
-              process.send(room_subject, room.PlayerUpdated(player_game))
-            }
-            Error(Nil) -> {
-              io.println("no room to get, need to reconnect")
-              todo
-            }
-          }
+      case room_manager.get_room(state.room_manager, player_game.game_code) {
+        Ok(room_subject) -> {
+          process.send(room_subject, room.PlayerUpdated(player_game))
         }
-        None -> todo
+        Error(Nil) -> {
+          io.println("no room to get, need to reconnect")
+          todo as "need to figure out how to reconnect to missing room"
+        }
+      }
+      #(None, state)
+    }
+    events.TriggerGameStart(game_code) -> {
+      case room_manager.get_room(state.room_manager, game_code) {
+        Ok(room_subject) -> process.send(room_subject, room.StartGame)
+        Error(Nil) -> {
+          io.println("no room to get, need to reconnect")
+          todo as "need to figure out how to reconnect to missing room"
+        }
       }
       #(None, state)
     }
@@ -345,4 +538,3 @@ fn roll_dice() -> DiceState {
   let white_2 = Die(locked: False, value: int.random(6) + 1)
   DiceState(red:, yellow:, blue:, green:, white_1:, white_2:)
 }
-// DATABASE SETUP ---------------------------------------------

@@ -1,4 +1,4 @@
-import server/sql
+import server/database/sql
 import shared/player.{type Player, Player}
 import youid/uuid
 

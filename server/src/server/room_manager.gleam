@@ -4,6 +4,7 @@ import gleam/io
 import gleam/otp/actor
 import gleam/otp/factory_supervisor
 import gleam/otp/supervision
+import sqlight
 
 import server/room
 import shared/game.{type Game, type GameCode}
@@ -11,6 +12,7 @@ import shared/game.{type Game, type GameCode}
 pub type Message {
   GetOrStartRoom(
     game: Game,
+    db_conn: sqlight.Connection,
     reply_to: Subject(Result(Subject(room.Message), Nil)),
   )
   GetRoom(code: GameCode, reply_to: Subject(Result(Subject(room.Message), Nil)))
@@ -19,20 +21,35 @@ pub type Message {
 pub type State {
   State(
     rooms: Dict(GameCode, Subject(room.Message)),
-    factory_name: Name(factory_supervisor.Message(Game, Subject(room.Message))),
+    factory_name: Name(
+      factory_supervisor.Message(
+        #(Game, sqlight.Connection),
+        Subject(room.Message),
+      ),
+    ),
   )
 }
 
 pub fn supervised(
   manager_name: Name(Message),
-  factory_name: Name(factory_supervisor.Message(Game, Subject(room.Message))),
+  factory_name: Name(
+    factory_supervisor.Message(
+      #(Game, sqlight.Connection),
+      Subject(room.Message),
+    ),
+  ),
 ) {
   supervision.worker(fn() { start(manager_name, factory_name) })
 }
 
 pub fn start(
   manager_name: Name(Message),
-  factory_name: Name(factory_supervisor.Message(Game, Subject(room.Message))),
+  factory_name: Name(
+    factory_supervisor.Message(
+      #(Game, sqlight.Connection),
+      Subject(room.Message),
+    ),
+  ),
 ) -> actor.StartResult(Subject(Message)) {
   actor.new(State(rooms: dict.new(), factory_name:))
   |> actor.named(manager_name)
@@ -43,8 +60,9 @@ pub fn start(
 pub fn get_or_start_room(
   manager: Subject(Message),
   game: Game,
+  db_conn: sqlight.Connection,
 ) -> Result(Subject(room.Message), Nil) {
-  process.call(manager, 5000, GetOrStartRoom(game, _))
+  process.call(manager, 5000, GetOrStartRoom(game, db_conn, _))
 }
 
 pub fn get_room(
@@ -56,7 +74,7 @@ pub fn get_room(
 
 fn handle_message(state: State, message: Message) {
   case message {
-    GetOrStartRoom(game, reply_to) -> {
+    GetOrStartRoom(game, db_conn, reply_to) -> {
       case dict.get(state.rooms, game.code) {
         Ok(room_subject) -> {
           process.send(reply_to, Ok(room_subject))
@@ -65,7 +83,7 @@ fn handle_message(state: State, message: Message) {
         Error(Nil) -> {
           let factory = factory_supervisor.get_by_name(state.factory_name)
 
-          case factory_supervisor.start_child(factory, game) {
+          case factory_supervisor.start_child(factory, #(game, db_conn)) {
             Ok(started) -> {
               let room_subject = started.data
 

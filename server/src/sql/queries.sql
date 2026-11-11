@@ -31,6 +31,9 @@ SELECT * FROM games;
 SELECT * FROM games
 WHERE code = ?;
 
+-- name: GetAllGameCodes :many
+SELECT code from games;
+
 -- name: UpdateGame :one
 UPDATE games
 SET status = ?

@@ -136,6 +136,20 @@ pub fn get_game_with_code_decoder() -> decode.Decoder(GetGameWithCode) {
   decode.success(GetGameWithCode(id:, code:, status:))
 }
 
+pub type GetAllGameCodes {
+  GetAllGameCodes(code: String)
+}
+
+pub fn get_all_game_codes() {
+  let sql = "SELECT code from games"
+  #(sql, [], get_all_game_codes_decoder())
+}
+
+pub fn get_all_game_codes_decoder() -> decode.Decoder(GetAllGameCodes) {
+  use code <- decode.field(0, decode.string)
+  decode.success(GetAllGameCodes(code:))
+}
+
 pub type UpdateGame {
   UpdateGame(id: String, code: String, status: String)
 }

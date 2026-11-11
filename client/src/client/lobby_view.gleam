@@ -4,7 +4,9 @@ import gleam/io
 import gleam/json
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/result
 import gleam/string
+import gleam/time/timestamp
 import lustre/attribute as attr
 import lustre/effect.{type Effect}
 import lustre/element.{type Element}
@@ -198,18 +200,6 @@ fn update_player_name(
     new_model,
     shared.send_event(context.ws, app_events.UpdatePlayerGame(player_game)),
   )
-  // let url = "/api/player"
-  // let body = app_player.player_to_json(player)
-  //
-  // let effect =
-  //   rsvp.put(
-  //     url,
-  //     body,
-  //     rsvp.expect_json(app_player.player_decoder(), ServerReturnedPlayer),
-  //   )
-  //
-  // // Send updated name to server
-  // #(Context(..context, player: player), new_model, effect)
 }
 
 // websocket messages ---------------------------
@@ -240,6 +230,13 @@ pub fn view(context: Context, model: Model) -> Element(Msg) {
     Some(name) -> name
     None -> "Guest"
   }
+  let sorted_players =
+    model.player_games
+    |> list.sort(fn(a, b) { timestamp.compare(a.joined, b.joined) })
+  let host = sorted_players |> list.first |> result.unwrap(context.player_game)
+  let all_players_ready =
+    sorted_players |> list.all(fn(player) { player.ready })
+
   html.div([], [
     html.text("Lobby for game " <> context.game.code <> "!"),
     html.div([], [
@@ -265,7 +262,27 @@ pub fn view(context: Context, model: Model) -> Element(Msg) {
       html.div([], [
         html.span([attr.style("font-weight", "bold")], [html.text("Players")]),
         html.div([], [
-          html.ul([], list.map(model.player_games, player_name(_, player.id))),
+          html.ul(
+            [],
+            sorted_players
+              |> list.map(player_name(_, player.id)),
+          ),
+        ]),
+        html.div([], [
+          case player.id == host.player_id {
+            True ->
+              html.button(
+                [
+                  attr.disabled(!all_players_ready),
+                  event.on_click(
+                    WsEffect(app_events.TriggerGameStart(context.game.code)),
+                  ),
+                ],
+                [html.text("start game")],
+              )
+
+            False -> element.none()
+          },
         ]),
       ]),
     ]),

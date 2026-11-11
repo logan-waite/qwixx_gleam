@@ -40,13 +40,14 @@ pub fn timestamp_decoder() -> decode.Decoder(Timestamp) {
   })
 }
 
-pub fn unwrap_list(list: List(a)) -> Option(a) {
+pub fn unwrap_list(list: List(a)) -> Result(Option(a), String) {
   case list {
-    [] -> None
-    [item] -> Some(item)
+    [] -> Ok(None)
+    [item] -> Ok(Some(item))
     _ -> {
-      io.println(string.inspect(list))
-      panic as "Can't turn a list with multiple elements into an Option"
+      Error(
+        "Tried to unwrap list into multiple items: " <> string.inspect(list),
+      )
     }
   }
 }

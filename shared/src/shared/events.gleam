@@ -6,7 +6,7 @@ import gleam/option.{type Option, None, Some}
 import gleam/string
 
 import shared/dice.{type DiceState}
-import shared/game.{type Game}
+import shared/game.{type Game, type GameCode}
 import shared/player.{type Player, type PlayerGame}
 
 // {
@@ -20,6 +20,7 @@ pub type AppEvent {
   JoinGame(Game, PlayerGame)
   UpdatePlayerGame(PlayerGame)
   UpdatePlayerList(List(PlayerGame))
+  TriggerGameStart(GameCode)
   // Legacy
   RollDice
   UpdatedDiceState(DiceState)
@@ -54,6 +55,8 @@ pub fn event_to_json(event: AppEvent) -> json.Json {
         "update-player-list",
         Some(json.array(player_games, player.player_game_to_json)),
       )
+    TriggerGameStart(game_code) ->
+      to_event("trigger-game-start", Some(json.string(game_code)))
     RollDice -> to_event("roll-dice", None)
     UpdatedDiceState(dice_state) ->
       to_event("updated-dice-state", Some(dice.dice_state_to_json(dice_state)))
@@ -96,6 +99,11 @@ pub fn event_decoder() -> decode.Decoder(AppEvent) {
       )
 
       decode.success(UpdatePlayerList(player_games))
+    }
+    "trigger-game-start" -> {
+      use game_code <- decode.field("data", decode.string)
+
+      decode.success(TriggerGameStart(game_code))
     }
     // Legacy
     "roll-dice" -> decode.success(RollDice)

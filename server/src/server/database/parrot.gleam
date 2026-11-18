@@ -1,5 +1,6 @@
 import gleam/dynamic/decode
 import gleam/list
+import gleam/result
 import parrot/dev
 import sqlight
 
@@ -26,4 +27,16 @@ pub fn run_query(
   let #(sql, params, expecting) = query_info
   let with = list.map(params, parrot_to_sqlight)
   sqlight.query(sql, conn, with, expecting)
+}
+
+pub fn run_command(
+  command_info: #(String, List(dev.Param)),
+  conn: sqlight.Connection,
+) -> Result(Nil, sqlight.Error) {
+  let #(sql, params) = command_info
+  let with = list.map(params, parrot_to_sqlight)
+  let expecting = decode.success(Nil)
+
+  sqlight.query(sql, conn, with, expecting)
+  |> result.map(fn(_) { Nil })
 }

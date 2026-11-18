@@ -50,7 +50,7 @@ pub fn game_decoder() -> decode.Decoder(Game) {
   decode.success(Game(id:, code:, status:))
 }
 
-fn game_status_to_string(status: GameStatus) -> String {
+pub fn game_status_to_string(status: GameStatus) -> String {
   case status {
     Lobby -> "lobby"
     InProgress -> "in-progress"

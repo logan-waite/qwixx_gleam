@@ -11,7 +11,8 @@ pub type AddPlayer {
 
 pub fn add_player(id id: String, name name: Option(String)) {
   let sql =
-    "INSERT INTO players (
+    "
+INSERT INTO players (
 	id, name 
 ) VALUES (
 	?, ?
@@ -82,7 +83,8 @@ pub type AddGame {
 
 pub fn add_game(id id: String, code code: String, status status: String) {
   let sql =
-    "INSERT INTO games (
+    "
+INSERT INTO games (
 	id, code, status 
 ) VALUES (
 	?, ?, ?
@@ -154,13 +156,17 @@ pub type UpdateGame {
   UpdateGame(id: String, code: String, status: String)
 }
 
-pub fn update_game(status status: String, id id: String) {
+pub fn update_game(status status: String, code code: String) {
   let sql =
     "UPDATE games
 SET status = ?
-WHERE id = ?
+WHERE code = ?
 RETURNING id, code, status"
-  #(sql, [dev.ParamString(status), dev.ParamString(id)], update_game_decoder())
+  #(
+    sql,
+    [dev.ParamString(status), dev.ParamString(code)],
+    update_game_decoder(),
+  )
 }
 
 pub fn update_game_decoder() -> decode.Decoder(UpdateGame) {
@@ -198,7 +204,8 @@ pub fn add_player_game(
   missed missed: Int,
 ) {
   let sql =
-    "INSERT INTO player_games (
+    "
+INSERT INTO player_games (
 	id, player_id, game_id, joined, ready, red, yellow, green, blue, missed
 ) VALUES (
 	?, ?, ?, ?, ?, ?, ?, ?, ?, ?
@@ -435,4 +442,16 @@ pub fn get_player_games_with_game_code_decoder() -> decode.Decoder(
     name:,
     game_code:,
   ))
+}
+
+pub fn set_all_player_ready_status(ready ready: Bool, code code: String) {
+  let sql =
+    "UPDATE player_games
+SET ready = ?
+WHERE game_id = (
+	SELECT id
+	FROM games
+	WHERE code = ?
+)"
+  #(sql, [dev.ParamBool(ready), dev.ParamString(code)])
 }

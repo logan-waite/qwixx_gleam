@@ -1,3 +1,7 @@
+-----------
+-- PLAYERS
+-----------
+
 -- name: AddPlayer :one
 INSERT INTO players (
 	id, name 
@@ -15,6 +19,10 @@ UPDATE players
 SET name = ?
 WHERE id = ?
 RETURNING *;
+
+-----------
+-- GAMES
+-----------
 
 -- name: AddGame :one
 INSERT INTO games (
@@ -37,8 +45,12 @@ SELECT code from games;
 -- name: UpdateGame :one
 UPDATE games
 SET status = ?
-WHERE id = ?
+WHERE code = ?
 RETURNING *;
+
+-----------
+-- PLAYER GAMES
+-----------
 
 -- name: AddPlayerGame :one
 INSERT INTO player_games (
@@ -70,4 +82,13 @@ SELECT player_games.*, players.name, games.code game_code FROM player_games
 JOIN games on player_games.game_id = games.id
 JOIN players on players.id = player_games.player_id
 WHERE code = ?;
+
+-- name: SetAllPlayerReadyStatus :exec
+UPDATE player_games
+SET ready = ?
+WHERE game_id = (
+	SELECT id
+	FROM games
+	WHERE code = ?
+);
 

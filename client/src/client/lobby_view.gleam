@@ -12,10 +12,11 @@ import lustre/effect.{type Effect}
 import lustre/element.{type Element}
 import lustre/element/html
 import lustre/event
+import modem
 import rsvp
 import youid/uuid.{type Uuid}
 
-import client/shared.{type Context, Context, Lobby}
+import client/shared.{type Context, Context, Game as RouteGame, Lobby}
 import shared/events as app_events
 import shared/game.{type Game} as app_game
 import shared/player.{type Player, type PlayerGame, Player, PlayerGame} as app_player
@@ -213,6 +214,11 @@ pub fn handle_app_event(
       io.println("updated player list")
       let new_model = Model(..model, player_games:)
       #(context, new_model, effect.none())
+    }
+    app_events.GameStarted(game) -> {
+      io.println("game started")
+      let new_context = Context(..context, current_route: RouteGame(game.code))
+      #(new_context, model, modem.push("game/" <> game.code, None, None))
     }
     _ -> {
       io.println("not handling this")

@@ -6,7 +6,7 @@ import gleam/option.{type Option, None, Some}
 import gleam/string
 
 import shared/dice.{type DiceState}
-import shared/game.{type Game, type GameCode}
+import shared/game.{type Game, type GameCode} as app_game
 import shared/player.{type Player, type PlayerGame}
 
 // {
@@ -21,6 +21,7 @@ pub type AppEvent {
   UpdatePlayerGame(PlayerGame)
   UpdatePlayerList(List(PlayerGame))
   TriggerGameStart(GameCode)
+  GameStarted(Game)
   // Legacy
   RollDice
   UpdatedDiceState(DiceState)
@@ -39,7 +40,7 @@ pub fn event_to_json(event: AppEvent) -> json.Json {
         "join-game",
         Some(
           json.object([
-            #("game", game.game_to_json(game)),
+            #("game", app_game.game_to_json(game)),
             #("player_game", player.player_game_to_json(player_game)),
           ]),
         ),
@@ -57,6 +58,8 @@ pub fn event_to_json(event: AppEvent) -> json.Json {
       )
     TriggerGameStart(game_code) ->
       to_event("trigger-game-start", Some(json.string(game_code)))
+    GameStarted(game) ->
+      to_event("game-started", Some(app_game.game_to_json(game)))
     RollDice -> to_event("roll-dice", None)
     UpdatedDiceState(dice_state) ->
       to_event("updated-dice-state", Some(dice.dice_state_to_json(dice_state)))
@@ -79,7 +82,7 @@ pub fn event_decoder() -> decode.Decoder(AppEvent) {
 
   case event {
     "join-game" -> {
-      use game <- decode.subfield(["data", "game"], game.game_decoder())
+      use game <- decode.subfield(["data", "game"], app_game.game_decoder())
       use player_game <- decode.subfield(
         ["data", "player_game"],
         player.player_game_decoder(),
@@ -104,6 +107,10 @@ pub fn event_decoder() -> decode.Decoder(AppEvent) {
       use game_code <- decode.field("data", decode.string)
 
       decode.success(TriggerGameStart(game_code))
+    }
+    "game-started" -> {
+      use game <- decode.field("data", app_game.game_decoder())
+      decode.success(GameStarted(game))
     }
     // Legacy
     "roll-dice" -> decode.success(RollDice)

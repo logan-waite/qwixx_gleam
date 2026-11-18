@@ -9,7 +9,7 @@ import youid/uuid
 
 import server/database/parrot
 import server/database/sql
-import shared/game.{type Game, type GameCode, Game} as app_game
+import shared/game.{type Game, type GameCode, type GameStatus, Game} as app_game
 import shared/player.{type Player, type PlayerGame, Player, PlayerGame}
 import shared/utils
 
@@ -21,9 +21,9 @@ pub fn add_player(player player: Player, db_conn db_conn: sqlight.Connection) {
     player.id
     |> uuid.to_string
 
-  let sql_result = sql.add_player(player_id, player.name)
+  let sql_params = sql.add_player(player_id, player.name)
 
-  case parrot.run_query(sql_result, db_conn) {
+  case parrot.run_query(sql_params, db_conn) {
     Ok(row) -> row |> list.map(add_player__player) |> utils.unwrap_list
     Error(err) -> {
       let error = "db error in db.add_player: " <> string.inspect(err)
@@ -33,9 +33,9 @@ pub fn add_player(player player: Player, db_conn db_conn: sqlight.Connection) {
 }
 
 pub fn get_player(id id: String, db_conn db_conn: sqlight.Connection) {
-  let sql_result = sql.get_player(id)
+  let sql_params = sql.get_player(id)
 
-  case parrot.run_query(sql_result, db_conn) {
+  case parrot.run_query(sql_params, db_conn) {
     Ok(row) -> {
       row |> list.map(get_player__player) |> utils.unwrap_list()
     }
@@ -51,9 +51,9 @@ pub fn update_player(
   db_conn db_conn: sqlight.Connection,
 ) {
   let player_id = uuid.to_string(player.id)
-  let sql_result = sql.update_player(id: player_id, name: player.name)
+  let sql_params = sql.update_player(id: player_id, name: player.name)
 
-  case parrot.run_query(sql_result, db_conn) {
+  case parrot.run_query(sql_params, db_conn) {
     Ok(row) -> {
       row
       |> list.map(update_player__player)
@@ -82,7 +82,7 @@ pub fn add_player_game(
       seconds * 1_000_000_000 + nanoseconds
     }
 
-  let sql_result =
+  let sql_params =
     sql.add_player_game(
       id: uuid.v4() |> uuid.to_string(),
       player_id: player.id |> uuid.to_string(),
@@ -95,7 +95,7 @@ pub fn add_player_game(
       blue: 0,
       missed: 0,
     )
-  case parrot.run_query(sql_result, db_conn) {
+  case parrot.run_query(sql_params, db_conn) {
     Ok(row) -> {
       row
       |> list.map(add_player_game__player_game(_, player.name, game.code))
@@ -170,8 +170,8 @@ pub fn get_game_players(
   game_code game_code: GameCode,
   db_conn db_conn: sqlight.Connection,
 ) {
-  let sql_result = sql.get_player_games_with_game_code(game_code)
-  case parrot.run_query(sql_result, db_conn) {
+  let sql_params = sql.get_player_games_with_game_code(game_code)
+  case parrot.run_query(sql_params, db_conn) {
     Ok(rows) -> {
       rows |> list.map(get_player_game_with_game_code__player_game) |> Ok
     }
@@ -182,14 +182,26 @@ pub fn get_game_players(
   }
 }
 
+pub fn update_game_player_ready(
+  status status: Bool,
+  game_code game_code: GameCode,
+  db_conn db_conn: sqlight.Connection,
+) {
+  let sql_params = sql.set_all_player_ready_status(status, game_code)
+  parrot.run_command(sql_params, db_conn)
+  |> result.map_error(fn(err) {
+    "db error in db.get_game_players: " <> string.inspect(err)
+  })
+}
+
 // --------------------
 // Game DB Operations
 // --------------------
 pub fn add_game(db_conn db_conn: sqlight.Connection) {
   let code = create_game_code(db_conn)
   let id = uuid.v4() |> uuid.to_string()
-  let sql = sql.add_game(id: id, code: code, status: "lobby")
-  case parrot.run_query(sql, db_conn) {
+  let sql_params = sql.add_game(id: id, code: code, status: "lobby")
+  case parrot.run_query(sql_params, db_conn) {
     Ok(row) -> {
       row
       |> list.map(add_game__game)
@@ -237,10 +249,28 @@ pub fn get_game_by_code(
   code code: GameCode,
   db_conn db_conn: sqlight.Connection,
 ) {
-  let sql = sql.get_game_with_code(code)
-  case parrot.run_query(sql, db_conn) {
+  let sql_params = sql.get_game_with_code(code)
+  case parrot.run_query(sql_params, db_conn) {
     Ok(rows) -> {
       rows |> list.map(get_game_with_code__game) |> utils.unwrap_list()
+    }
+    Error(err) -> {
+      let error = "db error in db.get_game_with_code: " <> string.inspect(err)
+      Error(error)
+    }
+  }
+}
+
+pub fn update_game(
+  status status: GameStatus,
+  code code: GameCode,
+  db_conn db_conn: sqlight.Connection,
+) {
+  let status_string = app_game.game_status_to_string(status)
+  let sql_params = sql.update_game(status: status_string, code: code)
+  case parrot.run_query(sql_params, db_conn) {
+    Ok(rows) -> {
+      rows |> list.map(update_game__game) |> utils.unwrap_list()
     }
     Error(err) -> {
       let error = "db error in db.get_game_with_code: " <> string.inspect(err)
@@ -437,6 +467,13 @@ fn get_player_game_with_game_code__player_game(
 fn add_game__game(add_game: sql.AddGame) -> Game {
   let sql.AddGame(id:, code:, status:) = add_game
   let assert Ok(game_id) = uuid.from_string(id)
+  let status = status |> app_game.game_status_from_string()
+  Game(id: game_id, code:, status:)
+}
+
+fn update_game__game(update_game: sql.UpdateGame) -> Game {
+  let sql.UpdateGame(id:, code:, status:) = update_game
+  let assert Ok(game_id) = id |> uuid.from_string()
   let status = status |> app_game.game_status_from_string()
   Game(id: game_id, code:, status:)
 }

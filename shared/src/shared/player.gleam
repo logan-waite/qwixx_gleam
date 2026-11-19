@@ -11,6 +11,10 @@ pub type Player {
   Player(id: Uuid, name: Option(String))
 }
 
+pub fn new_player() -> Player {
+  Player(id: uuid.nil, name: None)
+}
+
 pub type PlayerGame {
   PlayerGame(
     id: Uuid,
@@ -31,10 +35,6 @@ pub type PlayerGame {
   )
 }
 
-pub fn new_player() -> Player {
-  Player(id: uuid.nil, name: None)
-}
-
 pub fn new_player_game(player: Player, game_code: game.GameCode) -> PlayerGame {
   PlayerGame(
     id: uuid.nil,
@@ -49,6 +49,25 @@ pub fn new_player_game(player: Player, game_code: game.GameCode) -> PlayerGame {
     blue: 0,
     missed: 0,
   )
+}
+
+pub type PlayerGameColor {
+  Red
+  Yellow
+  Green
+  Blue
+}
+
+pub fn parse_player_game_color(
+  string: String,
+) -> Result(PlayerGameColor, String) {
+  case string {
+    "red" -> Ok(Red)
+    "yellow" -> Ok(Yellow)
+    "green" -> Ok(Green)
+    "blue" -> Ok(Blue)
+    _ -> Error("Unknown die color: " <> string)
+  }
 }
 
 pub fn player_decoder() -> decode.Decoder(Player) {

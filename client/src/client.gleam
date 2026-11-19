@@ -20,6 +20,7 @@ import modem
 import rsvp
 import youid/uuid.{type Uuid}
 
+import client/game_view.{type Msg as GameMsg}
 import client/lobby_view.{type Msg as LobbyMsg}
 import client/local_data.{LocalData}
 import client/shared.{
@@ -50,6 +51,7 @@ type Model {
     player_game: PlayerGame,
     start_model: start_view.Model,
     lobby_model: lobby_view.Model,
+    game_model: game_view.Model,
   )
 }
 
@@ -93,6 +95,7 @@ fn init(_) -> #(Model, Effect(Msg)) {
       player_game:,
       start_model: start_view.new_model(),
       lobby_model: lobby_view.new_model(),
+      game_model: game_view.new_model(),
     ),
     effect.batch(startup_effects),
   )
@@ -117,8 +120,7 @@ fn on_url_change(uri: Uri) -> Msg {
 type Msg {
   StartViewMsg(StartMsg)
   LobbyViewMsg(LobbyMsg)
-  UserRolledDice
-  UserToggledScoreBox(String)
+  GameViewMsg(GameMsg)
   ServerReturnedPlayer(Result(Player, rsvp.Error(String)))
   WsWrapper(ws.WebSocketEvent)
   OnRouteChange(Route)
@@ -145,11 +147,15 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
         lobby_effect |> effect.map(LobbyViewMsg),
       )
     }
-    UserRolledDice -> #(
-      model,
-      shared.send_event(model.context.ws, events.RollDice),
-    )
-    UserToggledScoreBox(value) -> update_player_game(model, value)
+    GameViewMsg(game_msg) -> {
+      let #(context, game_model, game_effect) =
+        game_view.update(model.context, model.game_model, game_msg)
+
+      #(
+        Model(..model, context:, game_model:),
+        game_effect |> effect.map(GameViewMsg),
+      )
+    }
     // Server Messages
     // Websocket Messages
     WsWrapper(event) -> handle_ws_event(model, event)
@@ -306,50 +312,6 @@ fn local_save_player_id(player_id: Uuid) {
   local_data.save(LocalData(player_id:))
 }
 
-// Dice
-
-// Score Card
-fn update_player_game(model: Model, value: String) {
-  // asserting here because we defined the values we're splitting
-  let assert [color, num_string] = string.split(value, "-")
-  let assert Ok(number) = int.parse(num_string)
-  // get the bitmask value
-  let assert Ok(bit_float) = int.power(2, int.to_float(number - 1))
-  let bit_value = float.round(bit_float)
-
-  let player_game = case color {
-    "red" ->
-      PlayerGame(..model.player_game, red: model.player_game.red + bit_value)
-    "yellow" ->
-      PlayerGame(
-        ..model.player_game,
-        yellow: model.player_game.yellow + bit_value,
-      )
-    "green" ->
-      PlayerGame(
-        ..model.player_game,
-        green: model.player_game.green + bit_value,
-      )
-    "blue" ->
-      PlayerGame(..model.player_game, blue: model.player_game.blue + bit_value)
-    _ -> {
-      io.println("Error updating player game, received wrong color:" <> color)
-      model.player_game
-    }
-  }
-  io.println(
-    "updated player game: "
-    <> app_player.player_game_to_json(player_game) |> json.to_string(),
-  )
-  #(
-    Model(..model, player_game:),
-    shared.send_event(
-      model.context.ws,
-      events.PlayerUpdatedPlayerGame(player_game),
-    ),
-  )
-}
-
 // -----------------------------------------------
 // View ------------------------------------------
 // -----------------------------------------------
@@ -364,94 +326,13 @@ fn view(model: Model) -> Element(Msg) {
       lobby_view.view(model.context, model.lobby_model)
       |> element.map(LobbyViewMsg)
     }
-    RouteGame(_) -> game_view(model)
+    RouteGame(_) ->
+      game_view.view(model.context, model.game_model)
+      |> element.map(GameViewMsg)
     RouteFinish(_) -> finish_view(model)
   }
 }
 
-fn game_view(model: Model) -> Element(Msg) {
-  html.div([], [
-    html.button([event.on_click(UserRolledDice)], [html.text("Roll Dice")]),
-    dice_tray(model.dice_state),
-    score_card(model.player_game),
-  ])
-}
-
 fn finish_view(_model: Model) -> Element(Msg) {
   html.div([], [html.text("Finish view")])
-}
-
-// Dice Tray
-fn dice_tray(dice_state: DiceState) {
-  html.div([], [
-    html.ul([], [
-      html.li([], [
-        html.text("Red: " <> int.to_string(dice_state.red.value)),
-      ]),
-      html.li([], [
-        html.text("Yellow: " <> int.to_string(dice_state.yellow.value)),
-      ]),
-      html.li([], [
-        html.text("Blue: " <> int.to_string(dice_state.blue.value)),
-      ]),
-      html.li([], [
-        html.text("Green: " <> int.to_string(dice_state.green.value)),
-      ]),
-      html.li([], [
-        html.text("White 1: " <> int.to_string(dice_state.white_1.value)),
-      ]),
-      html.li([], [
-        html.text("White 2: " <> int.to_string(dice_state.white_2.value)),
-      ]),
-    ]),
-  ])
-}
-
-// Score Card
-fn score_box(id, content, is_selected) {
-  html.label([attr.for(id)], [
-    html.input([
-      attr.type_("checkbox"),
-      attr.id(id),
-      attr.value(id),
-      attr.checked(is_selected),
-      event.on_change(UserToggledScoreBox),
-    ]),
-    html.text(content),
-  ])
-}
-
-fn score_row(color, bitmask) {
-  let boxes =
-    int.range(from: 13, to: 1, with: [], run: fn(acc, i: Int) {
-      let assert Ok(exp) = int.power(2, int.to_float(i - 1))
-      let value = float.round(exp) |> int.bitwise_and(bitmask)
-      let is_selected = value > 0
-
-      let num = int.to_string(i)
-      { color <> "-" <> num }
-      |> score_box(num, is_selected)
-      |> list.prepend(acc, _)
-    })
-
-  html.div([], [html.text(color), ..boxes])
-}
-
-// fn bitmask_to_num_list(bitmask: Int) -> List(Int) {
-//   int.range(from: 13, to: -1, with: [], fn(acc, i: Int) {
-//     let exp = int.power(2, i)
-//       case bitmask - exp {
-//         0 -> {}
-//         _ -> 
-//     }
-//   }
-// }
-
-fn score_card(game: PlayerGame) {
-  html.div([], [
-    score_row("red", game.red),
-    score_row("yellow", game.yellow),
-    score_row("green", game.green),
-    score_row("blue", game.blue),
-  ])
 }
